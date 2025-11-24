@@ -1,0 +1,190 @@
+import { Injectable, Logger } from '@nestjs/common';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+
+
+export interface SapUser {
+  InternalKey: number;
+  UserCode: string;
+  UserName: string;
+  E_Mail?: string;
+  MobilePhoneNumber?: string;
+  Department?: string;
+  Branch?: number;
+  Locked?: 'tNO' | 'tYES';
+  // ihtiyaca göre diğer alanlar da eklenebilir
+}
+@Injectable()
+export class SapService {
+  private readonly logger = new Logger(SapService.name);
+  private readonly client: AxiosInstance;
+  private cookieHeader: string | null = null;
+  private loggingIn = false;
+
+  constructor() {
+    const baseURL = process.env.SAP_BASE_URL;
+    if (!baseURL) {
+      throw new Error('SAP_BASE_URL is not defined');
+    }
+
+    this.client = axios.create({
+      baseURL: baseURL.replace(/\/$/, '') + '/',
+      timeout: 30000,
+      validateStatus: (status) => status >= 200 && status < 500, // 4xx'ü biz handle edeceğiz
+    });
+  }
+
+  async getUsers(): Promise<any[]> {
+  const data = await this.get<{ value: any[] }>('Users');
+  return data.value;
+ }
+
+   async getSapUsers(): Promise<SapUser[]> {
+    // Service Layer: GET /Users
+    const data = await this.get<{ value: SapUser[] }>('Users');
+    return data.value;
+  }
+
+  private async login(force = false): Promise<void> {
+    if (this.loggingIn && !force) {
+      // Aynı anda birden fazla login denemesini engellemek için
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (this.cookieHeader) return;
+    }
+
+    this.loggingIn = true;
+    try {
+      const CompanyDB = process.env.SAP_COMPANY_DB;
+      const UserName = process.env.SAP_USERNAME;
+      const Password = process.env.SAP_PASSWORD;
+
+      if (!CompanyDB || !UserName || !Password) {
+        throw new Error('SAP credentials are not fully defined in env');
+      }
+
+      const res = await this.client.post(
+        'Login',
+        { CompanyDB, UserName, Password },
+        {
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+
+      if (res.status >= 400) {
+        this.logger.error(
+          `Service Layer login failed [${res.status}]: ${JSON.stringify(
+            res.data,
+          )}`,
+        );
+        throw new Error(
+          `Service Layer login failed [${res.status}]: ${JSON.stringify(
+            res.data,
+          )}`,
+        );
+      }
+
+      const setCookie = res.headers['set-cookie'];
+      if (!setCookie || setCookie.length === 0) {
+        throw new Error('Service Layer did not return any cookies on login');
+      }
+
+      // B1SESSION, ROUTEID vs hepsini tek header’da birleştir:
+      this.cookieHeader = setCookie.map((c) => c.split(';')[0]).join('; ');
+      this.logger.log('Service Layer login successful');
+    } finally {
+      this.loggingIn = false;
+    }
+  }
+
+  private async ensureLoggedIn() {
+    if (!this.cookieHeader) {
+      await this.login();
+    }
+  }
+
+  private async request<T = any>(
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    url: string,
+    data?: any,
+    config?: AxiosRequestConfig,
+  ): Promise<T> {
+    await this.ensureLoggedIn();
+
+    const finalConfig: AxiosRequestConfig = {
+      method,
+      url,
+      data,
+      ...config,
+      headers: {
+        ...(config?.headers || {}),
+        'Content-Type': 'application/json',
+        Cookie: this.cookieHeader ?? '',
+      },
+    };
+
+    let res = await this.client.request(finalConfig);
+
+    // Session expired ise tekrar login dene
+    if (res.status === 401 || this.isSessionExpired(res.data)) {
+      this.logger.warn('Service Layer session expired, re-logging in...');
+      this.cookieHeader = null;
+      await this.login(true);
+
+      finalConfig.headers = {
+        ...(finalConfig.headers || {}),
+        Cookie: this.cookieHeader ?? '',
+      };
+      res = await this.client.request(finalConfig);
+    }
+
+    if (res.status >= 400) {
+      this.logger.error(
+        `Service Layer request failed [${res.status}] ${method} ${url}: ${JSON.stringify(
+          res.data,
+        )}`,
+      );
+      throw new Error(
+        `Service Layer request failed [${res.status}] ${method} ${url}: ${JSON.stringify(
+          res.data,
+        )}`,
+      );
+    }
+
+    return res.data as T;
+  }
+
+  private isSessionExpired(data: any): boolean {
+    if (!data) return false;
+    const msg = JSON.stringify(data).toLowerCase();
+    return (
+      msg.includes('session') &&
+      (msg.includes('expired') ||
+        msg.includes('invalid') ||
+        msg.includes('not found'))
+    );
+  }
+
+  // Public helper metotlar:
+  async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
+    return this.request<T>('GET', url, undefined, config);
+  }
+
+  async post<T = any>(
+    url: string,
+    body: any,
+    config?: AxiosRequestConfig,
+  ): Promise<T> {
+    return this.request<T>('POST', url, body, config);
+  }
+
+  async patch<T = any>(
+    url: string,
+    body: any,
+    config?: AxiosRequestConfig,
+  ): Promise<T> {
+    return this.request<T>('PATCH', url, body, config);
+  }
+
+  async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
+    return this.request<T>('DELETE', url, undefined, config);
+  }
+}

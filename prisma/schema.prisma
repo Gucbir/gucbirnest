@@ -1,0 +1,31 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  fullName     String
+  email        String    @unique
+  passwordHash String
+  role         String    @default("User")
+  isActive     Boolean   @default(true)
+  defaultSapUserId Int?
+  defaultSapUser   SapUser? @relation("DefaultSapUser", fields: [defaultSapUserId], references: [id])
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model SapUser {
+  id           Int      @id @default(autoincrement())
+  code         String   @unique
+  description  String?
+  isActive     Boolean  @default(true)
+
+  defaultOfUsers User[] @relation("DefaultSapUser")
+}
