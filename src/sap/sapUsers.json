@@ -1,0 +1,222 @@
+[
+  {
+    "internalKey": 1,
+    "userCode": "manager",
+    "userName": "manager",
+    "departmentId": 6,
+    "departmentName": "Yönetim",
+    "branch": -2,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 2,
+    "userCode": "B1i",
+    "userName": "B1i",
+    "departmentId": -2,
+    "departmentName": "Genel",
+    "branch": -2,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 3,
+    "userCode": "Workflow",
+    "userName": "Workflow",
+    "departmentId": -2,
+    "departmentName": "Genel",
+    "branch": -2,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 4,
+    "userCode": "Support",
+    "userName": "Support",
+    "departmentId": -2,
+    "departmentName": "Genel",
+    "branch": -2,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 5,
+    "userCode": "AlertSvc",
+    "userName": "AlertSvc",
+    "departmentId": -2,
+    "departmentName": "Genel",
+    "branch": -2,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 6,
+    "userCode": "GMH10",
+    "userName": "ERAY ŞAHİN",
+    "departmentId": 6,
+    "departmentName": "Yönetim",
+    "branch": -2,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 7,
+    "userCode": "GSP12",
+    "userName": "OSMAN YAVAŞ",
+    "departmentId": 2,
+    "departmentName": "Satış",
+    "branch": null,
+    "active": false,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 8,
+    "userCode": "AMMAR",
+    "userName": "AMMAR",
+    "departmentId": 3,
+    "departmentName": "İhracat",
+    "branch": 1,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 9,
+    "userCode": "GFU10",
+    "userName": "AYKUT MENTEŞ",
+    "departmentId": -2,
+    "departmentName": "Genel",
+    "branch": 1,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 10,
+    "userCode": "ZFM",
+    "userName": "Aytaç KARAKAYA",
+    "departmentId": 6,
+    "departmentName": "Yönetim",
+    "branch": 1,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 11,
+    "userCode": "GMH13",
+    "userName": "BURCU ÖZTÜRK",
+    "departmentId": -2,
+    "departmentName": "Genel",
+    "branch": -2,
+    "active": false,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 12,
+    "userCode": "GMH4",
+    "userName": "Adem Bolat",
+    "departmentId": 6,
+    "departmentName": "Yönetim",
+    "branch": 1,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 13,
+    "userCode": "GFU8",
+    "userName": "DUYGU DENİZ",
+    "departmentId": 6,
+    "departmentName": "Yönetim",
+    "branch": -2,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 14,
+    "userCode": "GMH11",
+    "userName": "MUHASEBE",
+    "departmentId": -2,
+    "departmentName": "Genel",
+    "branch": 1,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 15,
+    "userCode": "GSP4",
+    "userName": "Erisin TÜRÜDÜ",
+    "departmentId": 2,
+    "departmentName": "Satış",
+    "branch": -2,
+    "active": false,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 16,
+    "userCode": "GSP16",
+    "userName": "EZGİ KARABULUT",
+    "departmentId": -2,
+    "departmentName": "Genel",
+    "branch": -2,
+    "active": false,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 17,
+    "userCode": "GSP3",
+    "userName": "Ferda BASCI",
+    "departmentId": 3,
+    "departmentName": "İhracat",
+    "branch": null,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 18,
+    "userCode": "ZDP1",
+    "userName": "DEPO",
+    "departmentId": -2,
+    "departmentName": "Genel",
+    "branch": 1,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 19,
+    "userCode": "GSP7",
+    "userName": "Hatice SÖĞÜTDERE",
+    "departmentId": 6,
+    "departmentName": "Yönetim",
+    "branch": -2,
+    "active": true,
+    "email": null,
+    "mobile": null
+  },
+  {
+    "internalKey": 20,
+    "userCode": "GSP9",
+    "userName": "Hichem SAIDOUNE",
+    "departmentId": 3,
+    "departmentName": "İhracat",
+    "branch": null,
+    "active": true,
+    "email": null,
+    "mobile": null
+  }
+]

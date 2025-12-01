@@ -10,7 +10,11 @@ export class UsersService {
   /**
    * Yeni kullanıcı oluştur
    */
-  async createUser(fullName: string, email: string, password: string): Promise<User> {
+  async createUser(
+    fullName: string,
+    email: string,
+    password: string,
+  ): Promise<User> {
     const passwordHash = await bcrypt.hash(password, 10);
 
     return this.prisma.user.create({
@@ -44,12 +48,11 @@ export class UsersService {
    * Tüm kullanıcıları listele → /auth/users endpoint’i burayı kullanıyor
    */
   // users.service.ts
- async findAll(): Promise<User[]> {
-  return this.prisma.user.findMany({
-    orderBy: { id: 'asc' },
-  });
- }
-
+  async findAll(): Promise<User[]> {
+    return this.prisma.user.findMany({
+      orderBy: { id: 'asc' },
+    });
+  }
 
   /**
    * Login doğrulama için email+şifre kontrolü

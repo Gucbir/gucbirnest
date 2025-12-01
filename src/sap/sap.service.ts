@@ -1,6 +1,8 @@
+// @ts-nocheck
+
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
-
+import * as https from 'https';
 
 export interface SapUser {
   InternalKey: number;
@@ -13,6 +15,7 @@ export interface SapUser {
   Locked?: 'tNO' | 'tYES';
   // ihtiyaca göre diğer alanlar da eklenebilir
 }
+
 @Injectable()
 export class SapService {
   private readonly logger = new Logger(SapService.name);
@@ -30,18 +33,84 @@ export class SapService {
       baseURL: baseURL.replace(/\/$/, '') + '/',
       timeout: 30000,
       validateStatus: (status) => status >= 200 && status < 500, // 4xx'ü biz handle edeceğiz
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: false, // ⛔ sadece dev ortamı için
+      }),
     });
+    this.logger.log(
+      `SAP Service Layer baseURL: ${this.client.defaults.baseURL}`,
+    );
   }
 
-  async getUsers(): Promise<any[]> {
-  const data = await this.get<{ value: any[] }>('Users');
-  return data.value;
- }
+  // async getUsers(): Promise<any[]> {
+  //   const data = await this.get<{ value: any[] }>('Users');
+  //   return data.value;
+  // }
 
-   async getSapUsers(): Promise<SapUser[]> {
-    // Service Layer: GET /Users
-    const data = await this.get<{ value: SapUser[] }>('Users');
+  async getSapUsers(): Promise<SapUser[]> {
+    const query =
+      'Users?$select=InternalKey,UserCode,UserName,Department,Branch,Locked';
+    const data = await this.get<{ value: any[] }>(query);
     return data.value;
+  }
+
+  async getDepartments() {
+    const data = await this.get<{ value: any[] }>('Departments');
+    return data.value; // { Code, Name, ... }
+  }
+
+  async getWarehouses() {
+    const query = 'Warehouses?$select=WarehouseCode,WarehouseName';
+    const data = await this.get<{ value: any[] }>(query);
+    return data.value; // { Code, Name, ... }
+  }
+
+  // sap.service.ts içinde
+  async getWarehouseStocks(warehouseCode, pageSize = 100, maxPages = 100) {
+    const stocks = [];
+    let skip = 0;
+
+    for (let page = 0; page < maxPages; page++) {
+      const data = await this.get('Items', {
+        params: {
+          $select: 'ItemCode,ItemWarehouseInfoCollection',
+          $top: pageSize,
+          $skip: skip,
+        },
+      });
+
+      const items = data?.value ?? [];
+
+      // Bu sayfada hiç kayıt yoksa çık
+      if (items.length === 0) break;
+
+      // Bu sayfadaki kayıtları işle
+      for (const item of items) {
+        const wh = item.ItemWarehouseInfoCollection?.find(
+          (w) => w.WarehouseCode == warehouseCode,
+        );
+
+        if (!wh) continue;
+
+        const inStock = wh.InStock ?? 0;
+
+        if (inStock > 0) {
+          stocks.push({
+            ItemCode: item.ItemCode,
+            WarehouseCode: wh.WarehouseCode,
+            InStock: inStock,
+          });
+        }
+      }
+
+      // Son sayfa mı? (page size’dan az geldiyse)
+      if (items.length < pageSize) break;
+
+      // Bir sonraki sayfa için skip artır
+      skip += pageSize;
+    }
+
+    return stocks;
   }
 
   private async login(force = false): Promise<void> {
@@ -64,9 +133,7 @@ export class SapService {
       const res = await this.client.post(
         'Login',
         { CompanyDB, UserName, Password },
-        {
-          headers: { 'Content-Type': 'application/json' },
-        },
+        { headers: { 'Content-Type': 'application/json' } },
       );
 
       if (res.status >= 400) {
@@ -86,7 +153,7 @@ export class SapService {
       if (!setCookie || setCookie.length === 0) {
         throw new Error('Service Layer did not return any cookies on login');
       }
-
+      console.log(res.status, '--------------', res.data);
       // B1SESSION, ROUTEID vs hepsini tek header’da birleştir:
       this.cookieHeader = setCookie.map((c) => c.split(';')[0]).join('; ');
       this.logger.log('Service Layer login successful');

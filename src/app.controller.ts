@@ -1,12 +1,5 @@
 // src/auth/auth.controller.ts
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  UseGuards,
-  Req,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards, Req } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 
 import { AuthService } from './auth/auth.service';
@@ -40,6 +33,7 @@ export class AuthController {
   @Post('login')
   async login(@Body() dto: LoginDto) {
     // AuthService içinde login(dto) => { token, user } dönecek
+    console.log(dto, 'DTOOOOOO \n\n\n');
     return this.authService.login(dto);
   }
 
