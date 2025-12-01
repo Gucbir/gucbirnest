@@ -29,3 +29,52 @@ model SapUser {
 
   defaultOfUsers User[] @relation("DefaultSapUser")
 }
+
+model Item {
+  id              Int      @id @default(autoincrement())
+  ItemCode        String   @unique
+  ItemName        String
+  ForeignName     String?  
+
+  // SAP Flags (Aşırı kritik)
+  ItemType        String   // "I" (Inventory), "L" (Labor), "A" (Service)
+  InventoryItem   Boolean  // tYES/tNO → Prisma'da Boolean
+  SalesItem       Boolean
+  PurchaseItem    Boolean
+
+  // Units of Measure
+  InventoryUoM    String?
+  SalesUoM        String?
+  PurchaseUoM     String?
+
+  // Ürün grubu
+  ItemsGroupCode  Int?     
+
+  // Minimum & Maximum Inventory (SAP OITM: MinInventory, MaxInventory)
+  MinInventory    Float?
+  MaxInventory    Float?
+  QuantityOnStock  Float?   // Toplam mevcut stok miktarı
+
+
+  // Durumlar
+  Valid           Boolean   // tYES/tNO → Boolean
+  Frozen          Boolean   // tYES/tNO → Boolean
+  AssetItem       Boolean   // tYES/tNO → Boolean (Sabit kıymet)
+
+  // Fiyat / Kost
+  AvgPrice        Float?    // OITM.AvgPrice
+  LastPurPrc      Float?    // OITM.LastPurPrc
+  LastPurCur      String?   // TRY, USD vs.
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+
+model Warehouse {
+  id        Int     @id @default(autoincrement())
+  WhsCode   String  @unique   // "R1", "01", "ANA" vs
+  WhsName   String
+  isActive  Boolean @default(true)
+  stocks    ItemWarehouseStock[]
+}
+

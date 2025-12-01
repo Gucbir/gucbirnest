@@ -66,14 +66,66 @@ export class SapService {
   }
 
   // sap.service.ts içinde
-  async getWarehouseStocks(warehouseCode, pageSize = 100, maxPages = 100) {
-    const stocks = [];
+  // async getWarehouseStocks(warehouseCode, pageSize = 100, maxPages = 100) {
+  //   const stocks = [];
+  //   let skip = 0;
+
+  //   for (let page = 0; page < maxPages; page++) {
+  //     const data = await this.get('Items', {
+  //       params: {
+  //         $select: 'ItemCode,ItemWarehouseInfoCollection',
+  //         $top: pageSize,
+  //         $skip: skip,
+  //       },
+  //     });
+
+  //     const items = data?.value ?? [];
+
+  //     // Bu sayfada hiç kayıt yoksa çık
+  //     if (items.length === 0) break;
+
+  //     // Bu sayfadaki kayıtları işle
+  //     for (const item of items) {
+  //       const wh = item.ItemWarehouseInfoCollection?.find(
+  //         (w) => w.WarehouseCode == warehouseCode,
+  //       );
+
+  //       if (!wh) continue;
+
+  //       const inStock = wh.InStock ?? 0;
+
+  //       if (inStock > 0) {
+  //         stocks.push({
+  //           ItemCode: item.ItemCode,
+  //           WarehouseCode: wh.WarehouseCode,
+  //           InStock: inStock,
+  //         });
+  //       }
+  //     }
+
+  //     // Son sayfa mı? (page size’dan az geldiyse)
+  //     if (items.length < pageSize) break;
+
+  //     // Bir sonraki sayfa için skip artır
+  //     skip += pageSize;
+  //   }
+
+  //   return stocks;
+  // }
+  async getWarehouseStocks(
+    warehouseCode: string | number,
+    pageSize = 100,
+    maxPages = 100,
+  ) {
+    const allItems: any[] = [];
     let skip = 0;
+
+    const targetWh = Number(warehouseCode);
 
     for (let page = 0; page < maxPages; page++) {
       const data = await this.get('Items', {
         params: {
-          $select: 'ItemCode,ItemWarehouseInfoCollection',
+          $select: 'ItemCode,ItemName,ItemWarehouseInfoCollection',
           $top: pageSize,
           $skip: skip,
         },
@@ -81,36 +133,69 @@ export class SapService {
 
       const items = data?.value ?? [];
 
-      // Bu sayfada hiç kayıt yoksa çık
+      console.log(`PAGE ${page + 1}, skip=${skip}, itemCount=${items.length}`);
+
       if (items.length === 0) break;
 
-      // Bu sayfadaki kayıtları işle
-      for (const item of items) {
-        const wh = item.ItemWarehouseInfoCollection?.find(
-          (w) => w.WarehouseCode == warehouseCode,
-        );
+      allItems.push(...items);
 
-        if (!wh) continue;
-
-        const inStock = wh.InStock ?? 0;
-
-        if (inStock > 0) {
-          stocks.push({
-            ItemCode: item.ItemCode,
-            WarehouseCode: wh.WarehouseCode,
-            InStock: inStock,
-          });
-        }
-      }
-
-      // Son sayfa mı? (page size’dan az geldiyse)
       if (items.length < pageSize) break;
 
-      // Bir sonraki sayfa için skip artır
       skip += pageSize;
     }
 
+    console.log('TOTAL ITEMS FROM SL:', allItems.length);
+
+    let withWhCount = 0;
+    let withWhAndStockCount = 0;
+
+    const stocks: {
+      ItemCode: string;
+      ItemName?: string;
+      WarehouseCode: string;
+      InStock: number;
+    }[] = [];
+
+    for (const item of allItems) {
+      const wh = item.ItemWarehouseInfoCollection?.find(
+        (w: any) => Number(w.WarehouseCode) === targetWh,
+      );
+
+      if (!wh) {
+        continue;
+      }
+
+      withWhCount++;
+
+      const inStock = Number(wh.InStock ?? 0);
+
+      if (inStock > 0) {
+        withWhAndStockCount++;
+
+        stocks.push({
+          ItemCode: item.ItemCode,
+          ItemName: item.ItemName,
+          WarehouseCode: String(wh.WarehouseCode),
+          InStock: inStock,
+        });
+      }
+    }
+
+    console.log('Deposu aynı olan ürün sayısı   :', withWhCount);
+    console.log('Depo + stok > 0 olan ürün sayısı:', withWhAndStockCount);
+
     return stocks;
+  }
+
+  async getItemsPage(top: number, skip: number) {
+    return this.get('Items', {
+      params: {
+        $select:
+          'ItemCode,ItemName,ForeignName,ItemType,ItemsGroupCode,InventoryItem,SalesItem,PurchaseItem,InventoryUOM,SalesUnit,PurchaseUnit,MinInventory,MaxInventory,Valid,Frozen,AssetItem,AvgPrice,LastPurPrc,LastPurCur',
+        $top: top,
+        $skip: skip,
+      },
+    });
   }
 
   private async login(force = false): Promise<void> {
