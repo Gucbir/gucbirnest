@@ -62,12 +62,8 @@ export class SapController {
   }
 
   @Get('warehouses/:code/stocks')
-  async listWarehouseStocks(
-    @Param('code') code: string,
-    @Query('limit') limit?: string,
-  ) {
-    const top = limit ? parseInt(limit, 10) : 1000;
-    return this.sapService.getWarehouseStocks(code, top);
+  async listWarehouseStocks(@Param('code') code: string) {
+    return this.sapService.getWarehouseStocks(code);
   }
 
   // 1) Login testi – sadece Login çalışıyor mu görelim

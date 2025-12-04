@@ -65,6 +65,10 @@ model Item {
   AvgPrice        Float?    // OITM.AvgPrice
   LastPurPrc      Float?    // OITM.LastPurPrc
   LastPurCur      String?   // TRY, USD vs.
+
+  // 🔥 İLİŞKİ: Item -> ItemWarehouseStock
+  warehouseStocks ItemWarehouseStock[]
+  
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -75,6 +79,31 @@ model Warehouse {
   WhsCode   String  @unique   // "R1", "01", "ANA" vs
   WhsName   String
   isActive  Boolean @default(true)
-  stocks    ItemWarehouseStock[]
+  //stocks    ItemWarehouseStock[]
 }
+
+model ItemWarehouseStock {
+  id          Int        @id @default(autoincrement())
+
+  item        Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId      Int
+
+  warehouse   Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouseId Int
+
+  // Hızlı sorgu için kodları da saklıyoruz
+  ItemCode    String
+  WhsCode     String
+
+  InStock     Float      // OITW.OnHand veya InventoryBalances.InStock
+  IsCommited  Float?     // istersen ileride doldurursun
+  OnOrder     Float?     // istersen ileride doldurursun
+
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([itemId, warehouseId])
+  @@index([WhsCode])
+  @@index([ItemCode])
+}
+
 

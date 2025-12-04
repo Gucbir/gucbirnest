@@ -11,6 +11,8 @@ import { PrismaService } from './prisma/prisma.service';
 import { SapService } from './sap/sap.service';
 import { UsersService } from './users/users.service';
 import { ItemsSyncModule } from './items-sync/items-sync.module';
+import { WarehouseModule } from './items-sync/warehouse.module';
+import { OpenSalesOrdersModule } from './sales-orders/open-sales-orders.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -23,6 +25,8 @@ import { ItemsSyncModule } from './items-sync/items-sync.module';
     PrismaModule,
     ItemsModule,
     ItemsSyncModule,
+    WarehouseModule,
+    OpenSalesOrdersModule,
     // ileride: OrdersModule, StockModule, SalesModule, ...
   ],
   controllers: [AuthController],

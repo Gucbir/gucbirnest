@@ -2,9 +2,10 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../app.module';
 import { ItemsSyncService } from '../items-sync/items-sync.service';
-
+import { ItemStockSyncService } from '../items-sync/item-stock-sync.service';
+import { WarehouseSyncService } from '../items-sync/warehouse-sync.service';
 const bootstrap = async () => {
-  const [, , command] = process.argv; // node control.js <command>
+  const [, , command, arg1] = process.argv; // node control.js <command>
   if (!command) {
     printHelp();
     process.exit(1);
@@ -22,13 +23,46 @@ const bootstrap = async () => {
     console.log('✔️ [items:sync] Tamamlandı:', result);
   }
 
+  async function runWarehousesSync(svc: WarehouseSyncService) {
+    console.log(
+      '🚀 [warehouses:sync] SAP → PostgreSQL warehouse senkronu başlatılıyor...',
+    );
+    const result = await svc.syncWarehouses();
+    console.log('✔️ [warehouses:sync] Tamamlandı:', result);
+  }
+
+  async function runStockSync(
+    stockService: ItemStockSyncService,
+    whsCode?: string,
+  ) {
+    if (!whsCode) {
+      console.error(
+        '❌ [stock:sync] WhsCode parametresi eksik. Örn: yarn control stock:sync R1',
+      );
+      return;
+    }
+
+    console.log(
+      `🚀 [stock:sync] SAP → PostgreSQL stok senkronu başlatılıyor. Depo=${whsCode}`,
+    );
+    const result = await stockService.syncWarehouseStocks(whsCode);
+    console.log('✔️ [stock:sync] Tamamlandı:', result);
+  }
+
   try {
     switch (command) {
       case 'items:sync':
       case 'items':
         await runItemsSync(app.get(ItemsSyncService));
         break;
-
+      case 'stock:sync':
+      case 'stocks:sync':
+        await runStockSync(app.get(ItemStockSyncService), arg1);
+        break;
+      case 'warehouses:sync':
+      case 'warehouses':
+        await runWarehousesSync(app.get(WarehouseSyncService));
+        break;
       // case 'warehouses:sync':
       //   await runWarehousesSync(app.get(WarehouseSyncService));
       //   break;

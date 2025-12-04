@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../app.module';
-import { ItemsSyncService } from 'src/items-sync/items-sync.service';
+import { ItemsSyncService } from '../items-sync/items-sync.service';
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['log', 'error', 'warn'],
