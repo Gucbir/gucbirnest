@@ -14,8 +14,11 @@ model User {
   passwordHash String
   role         String    @default("User")
   isActive     Boolean   @default(true)
-  defaultSapUserId Int?
-  defaultSapUser   SapUser? @relation("DefaultSapUser", fields: [defaultSapUserId], references: [id])
+  department   String?  
+  sapUserId Int?
+  defaultSapUser   SapUser? @relation("DefaultSapUser", fields: [sapUserId], references: [id])
+  
+  logs            Log[]
 
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -79,7 +82,7 @@ model Warehouse {
   WhsCode   String  @unique   // "R1", "01", "ANA" vs
   WhsName   String
   isActive  Boolean @default(true)
-  //stocks    ItemWarehouseStock[]
+  stocks    ItemWarehouseStock[]
 }
 
 model ItemWarehouseStock {
@@ -106,4 +109,12 @@ model ItemWarehouseStock {
   @@index([ItemCode])
 }
 
+model Log {
+  id        Int      @id @default(autoincrement())
+  path      String
+  message   String
+  userId    Int
 
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}

@@ -6,6 +6,7 @@ import {
   Req,
   UseGuards,
   Get,
+  Query,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -41,12 +42,19 @@ export class AuthController {
   @Get('users')
   async getAllUsers() {
     const users = await this.usersService.findAll();
-
     return users.map((u) => ({
       id: u.id,
       fullName: u.fullName,
       email: u.email,
       role: u.role,
     }));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('oneuser')
+  async getOneUser(@Query('id') userId: string) {
+    const id = Number(userId);
+    const user = await this.usersService.findById(id);
+    return user;
   }
 }

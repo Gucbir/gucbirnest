@@ -1,5 +1,13 @@
 // src/auth/auth.controller.ts
-import { Body, Controller, Get, Post, UseGuards, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  UseGuards,
+  Req,
+  Query,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 
 import { AuthService } from './auth/auth.service';
@@ -59,12 +67,19 @@ export class AuthController {
   @Get('users')
   async getAllUsers() {
     const users = await this.usersService.findAll(); // sende getAll ise burayı değiştir
-
     return users.map((u) => ({
       id: u.id,
       fullName: u.fullName,
       email: u.email,
       role: u.role,
     }));
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('oneuser')
+  async getOneUser(@Query('id') userId: string) {
+    const id = Number(userId);
+    const user = await this.usersService.findById(id);
+    return user;
   }
 }
