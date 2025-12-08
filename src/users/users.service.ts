@@ -54,6 +54,16 @@ export class UsersService {
     });
   }
 
+  async update(values: any): Promise<User> {
+    return this.prisma.user.update({
+      where: {
+        id: values.id, // Güncellenecek kullanıcının ID'si
+      },
+      data: {
+        ...values, // id dışındaki tüm alanları günceller
+      },
+    });
+  }
   /**
    * Login doğrulama için email+şifre kontrolü
    */

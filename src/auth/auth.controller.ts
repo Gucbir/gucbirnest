@@ -57,4 +57,11 @@ export class AuthController {
     const user = await this.usersService.findById(id);
     return user;
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('updateuser')
+  async updateUser(@Body() body: any) {
+    const update = this.usersService.update(body);
+    return update;
+  }
 }

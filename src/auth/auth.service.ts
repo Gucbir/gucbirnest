@@ -54,21 +54,15 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    console.log(dto, '-------123123');
     const user = await this.usersService.validateUser(dto.email, dto.password);
-
     if (!user) {
-      console.log(`user yokk*************************`);
       throw new UnauthorizedException('Geçersiz email veya şifre.');
     }
-    console.log(user, 'USERRRRRRRRRRRRRRR', '\n\n\n\n');
     const token = await this.signToken(user);
-    console.log(token);
     return this.buildUserResponse(user, token);
   }
 
   async validateUserById(userId: number): Promise<User | null> {
-    console.log(this.usersService.findById(userId));
     return this.usersService.findById(userId);
   }
 }

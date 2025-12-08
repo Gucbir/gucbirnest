@@ -41,7 +41,6 @@ export class AuthController {
   @Post('login')
   async login(@Body() dto: LoginDto) {
     // AuthService içinde login(dto) => { token, user } dönecek
-    console.log(dto, 'DTOOOOOO \n\n\n');
     return this.authService.login(dto);
   }
 
@@ -81,5 +80,12 @@ export class AuthController {
     const id = Number(userId);
     const user = await this.usersService.findById(id);
     return user;
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('updateuser')
+  async updateUser(@Body() body: any) {
+    const update = this.usersService.update(body);
+    return update;
   }
 }
