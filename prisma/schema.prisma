@@ -118,3 +118,11 @@ model Log {
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
 }
+
+model Setting {
+  id        Int      @id @default(autoincrement())
+  name      String
+  settings   Json
+
+  createdAt DateTime @default(now())
+}
