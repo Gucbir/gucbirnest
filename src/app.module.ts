@@ -13,6 +13,7 @@ import { UsersService } from './users/users.service';
 import { ItemsSyncModule } from './items-sync/items-sync.module';
 import { WarehouseModule } from './items-sync/warehouse.module';
 import { OpenSalesOrdersModule } from './sales-orders/open-sales-orders.module';
+import { PurchaseRequestsModule } from './purchases/purchase-requests.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -27,6 +28,7 @@ import { OpenSalesOrdersModule } from './sales-orders/open-sales-orders.module';
     ItemsSyncModule,
     WarehouseModule,
     OpenSalesOrdersModule,
+    PurchaseRequestsModule,
     // ileride: OrdersModule, StockModule, SalesModule, ...
   ],
   controllers: [AuthController],
