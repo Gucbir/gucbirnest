@@ -14,6 +14,8 @@ import { ItemsSyncModule } from './items-sync/items-sync.module';
 import { WarehouseModule } from './items-sync/warehouse.module';
 import { OpenSalesOrdersModule } from './sales-orders/open-sales-orders.module';
 import { PurchaseRequestsModule } from './purchases/purchase-requests.module';
+import { SapUsersModule } from './sap-users/sap-users.module';
+import { ProductionModule } from './production/production.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -29,6 +31,8 @@ import { PurchaseRequestsModule } from './purchases/purchase-requests.module';
     WarehouseModule,
     OpenSalesOrdersModule,
     PurchaseRequestsModule,
+    SapUsersModule,
+    ProductionModule,
     // ileride: OrdersModule, StockModule, SalesModule, ...
   ],
   controllers: [AuthController],

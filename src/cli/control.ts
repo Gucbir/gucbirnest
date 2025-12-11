@@ -4,6 +4,8 @@ import { AppModule } from '../app.module';
 import { ItemsSyncService } from '../items-sync/items-sync.service';
 import { ItemStockSyncService } from '../items-sync/item-stock-sync.service';
 import { WarehouseSyncService } from '../items-sync/warehouse-sync.service';
+import { SapUsersSyncService } from '../sap-users/sap-users-sync.service';
+
 const bootstrap = async () => {
   const [, , command, arg1] = process.argv; // node control.js <command>
   if (!command) {
@@ -14,6 +16,14 @@ const bootstrap = async () => {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['log', 'error', 'warn'],
   });
+
+  async function runSapUsersSync(sapUsersSyncService) {
+    console.log(
+      '🚀 [sapusers:sync] SAP → PostgreSQL Settings.settings (sapusers) senkronu başlatılıyor...',
+    );
+    const result = await sapUsersSyncService.syncSapUsers();
+    console.log('✔️ [sapusers:sync] Tamamlandı:', result);
+  }
 
   async function runItemsSync(itemsSyncService: ItemsSyncService) {
     console.log(
@@ -62,6 +72,11 @@ const bootstrap = async () => {
       case 'warehouses:sync':
       case 'warehouses':
         await runWarehousesSync(app.get(WarehouseSyncService));
+        break;
+      case 'sapusers:sync':
+      case 'sapusers':
+      case 'sap-users':
+        await runSapUsersSync(app.get(SapUsersSyncService));
         break;
       // case 'warehouses:sync':
       //   await runWarehousesSync(app.get(WarehouseSyncService));

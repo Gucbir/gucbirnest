@@ -7,3 +7,6 @@ CREATE TABLE "Setting" (
 
     CONSTRAINT "Setting_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Setting_name_key" ON "Setting"("name");

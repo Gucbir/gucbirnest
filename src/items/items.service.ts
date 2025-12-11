@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 // Prisma tipini sadece where/orderBy için kullanıyoruz, istersen kaldırıp hepsini any yaparız.
 import { Prisma } from '@prisma/client';
 import { ItemsQueryDto } from './dto/items-query.dto';
-import { SapService } from 'src/sap/sap.service';
+import { SapService } from '../sap/sap.service';
 @Injectable()
 export class ItemsService {
   constructor(
