@@ -8,101 +8,99 @@ generator client {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
-  fullName     String
-  email        String    @unique
-  passwordHash String
-  role         String    @default("User")
-  isActive     Boolean   @default(true)
-  department   String?  
-  sapUserId Int?
-  defaultSapUser   SapUser? @relation("DefaultSapUser", fields: [sapUserId], references: [id])
-  
-  logs            Log[]
+  id             Int      @id @default(autoincrement())
+  fullName       String
+  email          String   @unique
+  passwordHash   String
+  role           String   @default("User")
+  isActive       Boolean  @default(true)
+  department     String?
+  sapUserId      Int?
+  defaultSapUser SapUser? @relation("DefaultSapUser", fields: [sapUserId], references: [id])
 
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  logs Log[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SapUser {
-  id           Int      @id @default(autoincrement())
-  code         String   @unique
-  description  String?
-  isActive     Boolean  @default(true)
+  id          Int     @id @default(autoincrement())
+  code        String  @unique
+  description String?
+  isActive    Boolean @default(true)
 
   defaultOfUsers User[] @relation("DefaultSapUser")
 }
 
 model Item {
-  id              Int      @id @default(autoincrement())
-  ItemCode        String   @unique
-  ItemName        String
-  ForeignName     String?  
+  id          Int     @id @default(autoincrement())
+  ItemCode    String  @unique
+  ItemName    String
+  ForeignName String?
 
   // SAP Flags (Aşırı kritik)
-  ItemType        String   // "I" (Inventory), "L" (Labor), "A" (Service)
-  InventoryItem   Boolean  // tYES/tNO → Prisma'da Boolean
-  SalesItem       Boolean
-  PurchaseItem    Boolean
+  ItemType      String // "I" (Inventory), "L" (Labor), "A" (Service)
+  InventoryItem Boolean // tYES/tNO → Prisma'da Boolean
+  SalesItem     Boolean
+  PurchaseItem  Boolean
 
   // Units of Measure
-  InventoryUoM    String?
-  SalesUoM        String?
-  PurchaseUoM     String?
+  InventoryUoM String?
+  SalesUoM     String?
+  PurchaseUoM  String?
 
   // Ürün grubu
-  ItemsGroupCode  Int?     
+  ItemsGroupCode Int?
 
   // Minimum & Maximum Inventory (SAP OITM: MinInventory, MaxInventory)
   MinInventory    Float?
   MaxInventory    Float?
-  QuantityOnStock  Float?   // Toplam mevcut stok miktarı
-
+  QuantityOnStock Float? // Toplam mevcut stok miktarı
 
   // Durumlar
-  Valid           Boolean   // tYES/tNO → Boolean
-  Frozen          Boolean   // tYES/tNO → Boolean
-  AssetItem       Boolean   // tYES/tNO → Boolean (Sabit kıymet)
+  Valid     Boolean // tYES/tNO → Boolean
+  Frozen    Boolean // tYES/tNO → Boolean
+  AssetItem Boolean // tYES/tNO → Boolean (Sabit kıymet)
 
   // Fiyat / Kost
-  AvgPrice        Float?    // OITM.AvgPrice
-  LastPurPrc      Float?    // OITM.LastPurPrc
-  LastPurCur      String?   // TRY, USD vs.
+  AvgPrice   Float? // OITM.AvgPrice
+  LastPurPrc Float? // OITM.LastPurPrc
+  LastPurCur String? // TRY, USD vs.
 
   // 🔥 İLİŞKİ: Item -> ItemWarehouseStock
   warehouseStocks ItemWarehouseStock[]
-  
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-
 model Warehouse {
-  id        Int     @id @default(autoincrement())
-  WhsCode   String  @unique   // "R1", "01", "ANA" vs
-  WhsName   String
-  isActive  Boolean @default(true)
-  stocks    ItemWarehouseStock[]
+  id       Int                  @id @default(autoincrement())
+  WhsCode  String               @unique // "R1", "01", "ANA" vs
+  WhsName  String
+  isActive Boolean              @default(true)
+  stocks   ItemWarehouseStock[]
 }
 
 model ItemWarehouseStock {
-  id          Int        @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  item        Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  itemId      Int
+  item   Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId Int
 
-  warehouse   Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   warehouseId Int
 
   // Hızlı sorgu için kodları da saklıyoruz
-  ItemCode    String
-  WhsCode     String
+  ItemCode String
+  WhsCode  String
 
-  InStock     Float      // OITW.OnHand veya InventoryBalances.InStock
-  IsCommited  Float?     // istersen ileride doldurursun
-  OnOrder     Float?     // istersen ileride doldurursun
+  InStock    Float // OITW.OnHand veya InventoryBalances.InStock
+  IsCommited Float? // istersen ileride doldurursun
+  OnOrder    Float? // istersen ileride doldurursun
 
-  updatedAt   DateTime   @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@unique([itemId, warehouseId])
   @@index([WhsCode])
@@ -110,19 +108,76 @@ model ItemWarehouseStock {
 }
 
 model Log {
-  id        Int      @id @default(autoincrement())
-  path      String
-  message   String
-  userId    Int
+  id      Int    @id @default(autoincrement())
+  path    String
+  message String
+  userId  Int
 
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
 }
 
 model Setting {
-  id        Int      @id @default(autoincrement())
-  name      String
-  settings   Json
+  id       Int    @id @default(autoincrement())
+  name     String @unique
+  settings Json
 
   createdAt DateTime @default(now())
+}
+
+model ProductionOrder {
+  id          Int    @id @default(autoincrement())
+  sapDocEntry Int? // SAP DocEntry
+  sapDocNum   Int? // SAP DocNum
+  itemCode    String
+  itemName    String
+  quantity    Float
+  status      String @default("planned") // planned | in_progress | done | cancelled
+
+  // Bir üretim siparişinin tüm operasyonları
+  operations ProductionOperation[]
+}
+
+model ProductionOperation {
+  id             Int       @id @default(autoincrement())
+  orderId        Int
+  stageCode      String // AKUPLE
+  stageName      String // AKUPLE MONTAJ
+  sequenceNo     Int // 10,20,30...
+  departmentCode String // AKUPLE, MOTOR, TESISAT...
+  status         String    @default("waiting") // waiting | in_progress | done
+  startedAt      DateTime?
+  finishedAt     DateTime?
+
+  // İLİŞKİLER
+  order ProductionOrder @relation(fields: [orderId], references: [id])
+
+  // 🔥 TEK ilişki: bu operasyonun kalemleri
+  items ProductionOperationItem[]
+}
+
+model ProductionOperationItem {
+  id          Int @id @default(autoincrement())
+  operationId Int
+
+  itemCode      String // orijinal ürün
+  itemName      String
+  quantity      Float // planlanan miktar
+  uomName       String?
+  warehouseCode String? // planlanan depo
+  issueMethod   String?
+  lineNo        Int?
+
+  // Gerçekte kullanılan ürün (orijinal veya alternatif)
+  selectedItemCode      String?
+  selectedItemName      String?
+  selectedWarehouseCode String?
+  selectedQuantity      Float?
+  isAlternative         Boolean @default(false)
+
+  // SAP malzeme çıkışı belgesi (varsa)
+  sapIssueDocEntry Int?
+
+  // İLİŞKİ
+  operation ProductionOperation @relation(fields: [operationId], references: [id])
 }

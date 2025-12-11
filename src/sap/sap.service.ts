@@ -203,6 +203,197 @@ export class SapService {
     }
   }
 
+  async getOrderMainItemByDocNum(docNum: number) {
+    this.logger.log(
+      `[SapService] getOrderMainItemByDocNum (Orders): docNum=${docNum}`,
+    );
+
+    // Daha önce Items için yaptığımız gibi, sadece endpoint 'Orders'
+    const data = await this.get<any>('Orders', {
+      params: {
+        $select: 'DocEntry,DocNum,DocumentLines',
+        $filter: `DocNum eq ${docNum}`,
+      },
+    });
+
+    const order = (data?.value || [])[0];
+
+    if (!order) {
+      this.logger.warn(
+        `[SapService] Orders: no order found for DocNum=${docNum}`,
+      );
+      return null;
+    }
+
+    const line = (order.DocumentLines || [])[0];
+    if (!line) {
+      this.logger.warn(
+        `[SapService] Orders: order ${docNum} has no document lines`,
+      );
+      return null;
+    }
+
+    const header = {
+      sapDocEntry: order.DocEntry,
+      sapDocNum: order.DocNum,
+      itemCode: line.ItemCode,
+      itemName: line.ItemDescription,
+      quantity: Number(line.Quantity ?? 0),
+    };
+
+    this.logger.log(
+      `[SapService] Orders header for DocNum=${docNum}: ${JSON.stringify(
+        header,
+      )}`,
+    );
+
+    return header;
+  }
+
+  // async getBomByItemCode(itemCode) {
+  //   const sqlResult: any = await this.post(
+  //     `/SQLQueries('BomByItemCode')/List`,
+  //     {
+  //       ItemCode: itemCode,
+  //     },
+  //   );
+
+  //   const rows: any[] = sqlResult.value || [];
+
+  //   return rows.map((r) => ({
+  //     bomItemCode: r.BomItemCode,
+  //     fatherItemCode: r.FatherItemCode,
+  //     itemCode: r.ItemCode,
+  //     itemName: r.ItemName,
+  //     quantity: Number(r.Quantity ?? 0),
+  //     warehouseCode: r.WhsCode,
+  //     uomName: r.UomName,
+  //     issueMethod: r.IssueMethod,
+  //     lineNo: r.LineNo,
+  //     stageId: r.StageId,
+  //   }));
+  // }
+
+  async getBomByItemCode(itemCode) {
+    this.logger.log(`[SapService] getBomByItemCode: itemCode=${itemCode}`);
+    const body = {
+      ParamList: `ItemCode='${itemCode}'`,
+    };
+    const res = await this.post(`SQLQueries('BomByItemCode')/List`, body);
+
+    // Service Layer SQLQueries her zaman { value: [...] } döner
+    return res;
+  }
+
+  async getRoutingStages() {
+    const res = await this.post(`/SQLQueries('RoutingStages')/List`, {});
+    const rows = res.value || [];
+
+    console.log(rows);
+    return rows.map((r) => ({
+      stageId: r.AbsEntry, // ITT1.StageID ile eşleşecek
+      code: r.Code, // "AKUPLE"
+      name: r.Desc, // "AKUPLE"
+    }));
+  }
+
+  /**
+   * Ürün kodundan üretim yapısı (rota aşamaları + kalemler)
+   * BomByItemCode + RoutingStages sonuçlarını birleştirir.
+   */
+  async getProductionStructureByItemCode(itemCode: string) {
+    // 1) BOM satırları + rota stage’leri
+    let [bomResult, routingStages] = await Promise.all([
+      this.getBomByItemCode(itemCode), // SQLQueries('BomByItemCode')
+      this.getRoutingStages(), // ORST
+    ]);
+
+    // SAP SQLQueries response’unda asıl data .value içinde
+    const bomLines: any[] = bomResult?.value ?? [];
+
+    // 2) ORST’ten gelen stage’leri map’le (genel kullanım için dursun)
+    const stageMap = new Map<number, { code: string; name: string }>();
+    for (const s of routingStages ?? []) {
+      const sid = Number(s.stageId ?? s.AbsEntry ?? 0);
+      if (!sid) continue;
+
+      stageMap.set(sid, {
+        code: s.code || s.Code,
+        name: s.name || s.Name,
+      });
+    }
+
+    // 3) Jeneratör üretimi için StageId → AKUPLE / MOTOR MONTAJ / PANO VE TESİSAT override
+    const STAGE_OVERRIDE: Record<
+      number,
+      { code: string; name: string; departmentCode: string }
+    > = {
+      1: { code: 'AKUPLE', name: 'AKUPLE', departmentCode: 'AKUPLE' },
+      2: {
+        code: 'MOTOR_MONTAJ',
+        name: 'MOTOR MONTAJ',
+        departmentCode: 'MOTOR',
+      },
+      3: {
+        code: 'PANO_TESISAT',
+        name: 'PANO VE TESİSAT',
+        departmentCode: 'TESISAT',
+      },
+      // ileride ihtiyaç olursa 4: TEST vs. eklenir
+    };
+
+    // 4) StageId’ye göre grupla
+    const stagesMap = new Map<number, any>();
+
+    for (const line of bomLines) {
+      const sid = Number(line.StageId ?? line.stageId ?? 0) || 0;
+
+      // Önce override’a bak, yoksa ORST’ten geleni kullan, o da yoksa GENEL
+      const override = STAGE_OVERRIDE[sid];
+      const base = stageMap.get(sid);
+      const stageInfo = override ??
+        (base && { ...base, departmentCode: base.code }) ?? {
+          code: 'GENEL',
+          name: 'GENEL',
+          departmentCode: 'GENEL',
+        };
+
+      if (!stagesMap.has(sid)) {
+        stagesMap.set(sid, {
+          stageId: sid,
+          code: stageInfo.code,
+          name: stageInfo.name,
+          departmentCode: stageInfo.departmentCode,
+          sequenceNo: sid * 10 || 999, // 1→10, 2→20, 3→30
+          lines: [],
+        });
+      }
+
+      const stage = stagesMap.get(sid);
+
+      // SAP kolon adlarını doğru alanlara map’leyelim
+      stage.lines.push({
+        itemCode: line.ItemCode ?? line.itemCode ?? '',
+        itemName: line.ItemName ?? line.itemName ?? '',
+        quantity: Number(line.Quantity ?? line.quantity ?? 0),
+        uomName: line.UomName ?? line.uomName ?? '',
+        warehouseCode: line.WhsCode ?? line.warehouseCode ?? '',
+        issueMethod: line.IssueMethod ?? line.issueMethod ?? '',
+        lineNo: line.VisOrder ?? line.lineNo ?? 0,
+      });
+    }
+
+    // 5) Stage’leri sırala
+    const stages = Array.from(stagesMap.values()).sort(
+      (a, b) => a.sequenceNo - b.sequenceNo,
+    );
+
+    return {
+      itemCode,
+      stages,
+    };
+  }
+
   private async request<T = any>(
     method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     url: string,
@@ -263,6 +454,53 @@ export class SapService {
         msg.includes('invalid') ||
         msg.includes('not found'))
     );
+  }
+
+  async getProductionStructureByOrderId(docNum: number) {
+    // 1) Sipariş başlığı (Orders + DocumentLines)
+    const header = await this.getOrderMainItemByDocNum(docNum);
+
+    if (!header) {
+      throw new Error(
+        `SAP'te bu numaraya ait satış siparişi bulunamadı veya satırı yok. (DocNum=${docNum})`,
+      );
+    }
+
+    // 2) Ürün ağacı + rota (hala BomByItemCode + RoutingStages)
+    const structureByItem = await this.getProductionStructureByItemCode(
+      header.itemCode,
+    );
+
+    return {
+      header,
+      stages: structureByItem.stages,
+    };
+  }
+
+  // sap.service.ts
+  async getItemsBatchSerialFlags(itemCodes: string[]) {
+    const uniqueCodes = Array.from(new Set(itemCodes.filter(Boolean)));
+
+    if (uniqueCodes.length === 0) return {};
+
+    // SQLQuery veya Items endpoint kullanabilirsin; ben SQLQuery örneği yazıyorum:
+    const res = await this.get('SQLQueries', {
+      params: {
+        // OITM'den ManBtchNum / ManSerNum getiren kendi query'ni koy
+        // Örn: SqlCode = 'ItemBatchFlags'
+        // Param olarak itemCode listesi vs.
+      },
+    });
+
+    // burada res.value -> [{ ItemCode, ManBtchNum, ManSerNum }, ...]
+    const map: Record<string, { batch: boolean; serial: boolean }> = {};
+    for (const row of res.value ?? []) {
+      map[row.ItemCode] = {
+        batch: row.ManBtchNum === 'Y',
+        serial: row.ManSerNum === 'Y',
+      };
+    }
+    return map;
   }
 
   // Public helper metotlar:
