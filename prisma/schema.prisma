@@ -120,9 +120,19 @@ model Log {
 }
 
 model Setting {
-  id        Int      @id @default(autoincrement())
-  name      String
-  settings   Json
+id Int @id @default(autoincrement())
+name String @unique
+settings Json
 
-  createdAt DateTime @default(now())
+createdAt DateTime @default(now())
+}
+
+model Form {
+id Int @id @default(autoincrement())
+name String @unique
+values Json
+
+createdAt DateTime @default(now())
+updatedAt   DateTime   @updatedAt
+
 }

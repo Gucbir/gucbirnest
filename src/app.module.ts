@@ -13,6 +13,8 @@ import { UsersService } from './users/users.service';
 import { ItemsSyncModule } from './items-sync/items-sync.module';
 import { WarehouseModule } from './items-sync/warehouse.module';
 import { OpenSalesOrdersModule } from './sales-orders/open-sales-orders.module';
+import { SettingsService } from './settings/settings.service';
+import { FormsService } from './forms/forms.service';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -30,6 +32,13 @@ import { OpenSalesOrdersModule } from './sales-orders/open-sales-orders.module';
     // ileride: OrdersModule, StockModule, SalesModule, ...
   ],
   controllers: [AuthController],
-  providers: [AppService, PrismaService, SapService, UsersService],
+  providers: [
+    AppService,
+    PrismaService,
+    SapService,
+    UsersService,
+    SettingsService,
+    FormsService,
+  ],
 })
 export class AppModule {}

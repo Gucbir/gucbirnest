@@ -7,8 +7,9 @@ import { AuthService } from './auth.service';
 import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { SettingsModule } from '../settings/settings.module';
+import { FormsModule } from '../forms/forms.module';
 
- 
 @Module({
   // imports: [
   //   ConfigModule,
@@ -26,18 +27,20 @@ import { JwtAuthGuard } from './jwt-auth.guard';
   //   }),
   // ],
   imports: [
+    FormsModule,
+    SettingsModule,
     UsersModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'dev-secret',
       signOptions: {
-    expiresIn: process.env.JWT_EXPIRES_IN
-      ? Number(process.env.JWT_EXPIRES_IN)
-      : 60 * 60 * 24, // 1 gün (saniye)
-  },
+        expiresIn: process.env.JWT_EXPIRES_IN
+          ? Number(process.env.JWT_EXPIRES_IN)
+          : 60 * 60 * 24, // 1 gün (saniye)
+      },
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService,JwtStrategy, JwtAuthGuard],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard],
   exports: [AuthService],
 })
 export class AuthModule {}
