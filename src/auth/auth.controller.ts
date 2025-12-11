@@ -13,6 +13,8 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { UsersService } from '../users/users.service';
+import { SettingsService } from '../settings/settings.service';
+import { FormsService } from '../forms/forms.service';
 @Controller('Auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
@@ -20,6 +22,8 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly usersService: UsersService,
+    private readonly settingsService: SettingsService,
+    private readonly formsService: FormsService,
   ) {}
 
   @Post('register')
@@ -63,5 +67,31 @@ export class AuthController {
   async updateUser(@Body() body: any) {
     const update = this.usersService.update(body);
     return update;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('getsettings')
+  async getSettings(@Query('name') name: string) {
+    const settings = await this.settingsService.getSettings(name);
+    return settings;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('setsettings')
+  async setSettings(@Body() body: { name: string; settings: any[] }) {
+    return this.settingsService.updateSetting(body.name, body.settings);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('setforms')
+  async setForms(@Body() body: { name: string; values: any }) {
+    return this.formsService.setForms(body.name, body.values);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('getforms')
+  async getForms(@Query('name') name: string) {
+    const forms = await this.formsService.getForms(name);
+    return forms;
   }
 }

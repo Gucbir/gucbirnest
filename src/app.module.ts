@@ -16,6 +16,8 @@ import { OpenSalesOrdersModule } from './sales-orders/open-sales-orders.module';
 import { PurchaseRequestsModule } from './purchases/purchase-requests.module';
 import { SapUsersModule } from './sap-users/sap-users.module';
 import { ProductionModule } from './production/production.module';
+import { SettingsService } from './settings/settings.service';
+import { FormsService } from './forms/forms.service';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -36,6 +38,13 @@ import { ProductionModule } from './production/production.module';
     // ileride: OrdersModule, StockModule, SalesModule, ...
   ],
   controllers: [AuthController],
-  providers: [AppService, PrismaService, SapService, UsersService],
+  providers: [
+    AppService,
+    PrismaService,
+    SapService,
+    UsersService,
+    SettingsService,
+    FormsService,
+  ],
 })
 export class AppModule {}

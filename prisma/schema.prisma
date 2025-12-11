@@ -117,14 +117,6 @@ model Log {
   createdAt DateTime @default(now())
 }
 
-model Setting {
-  id       Int    @id @default(autoincrement())
-  name     String @unique
-  settings Json
-
-  createdAt DateTime @default(now())
-}
-
 model ProductionOrder {
   id          Int    @id @default(autoincrement())
   sapDocEntry Int? // SAP DocEntry
@@ -180,4 +172,22 @@ model ProductionOperationItem {
 
   // İLİŞKİ
   operation ProductionOperation @relation(fields: [operationId], references: [id])
+}
+
+model Setting {
+  id       Int    @id @default(autoincrement())
+  name     String @unique
+  settings Json
+
+  createdAt DateTime @default(now())
+}
+
+model Form {
+id Int @id @default(autoincrement())
+name String @unique
+values Json
+
+createdAt DateTime @default(now())
+updatedAt   DateTime   @updatedAt
+
 }
