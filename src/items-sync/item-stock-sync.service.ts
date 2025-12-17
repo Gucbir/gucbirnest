@@ -2,143 +2,145 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SapService } from '../sap/sap.service';
 
-interface SapWarehouseStock {
-  ItemCode: string;
-  WhsCode: string;
-  InStock: number;
-  IsCommited?: number;
-  OnOrder?: number;
-}
-
 @Injectable()
-export class ItemStockSyncService {
-  private readonly logger = new Logger(ItemStockSyncService.name);
+export class OpenSalesOrderSyncService {
+  private readonly logger = new Logger(OpenSalesOrderSyncService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly sap: SapService,
   ) {}
 
-  /**
-   * Belirli bir depo için stok senkronu
-   * Örn: yarn control stock:sync R1
-   */
-  async syncWarehouseStocks(whsCode: string) {
-    this.logger.log(`SAP → PostgreSQL stok senkronu başlıyor. Depo=${whsCode}`);
+  async syncOpenSalesOrders() {
+    this.logger.log('🚀 SAP → Açık siparişler (header+lines) çekiliyor...');
+    const orders = await this.sap.getAllOpenSalesOrdersWithLines(50);
 
-    // 1) SAP'ten stokları al
-    const sapStocks = await this.fetchSapStocksForWarehouse(whsCode);
-    this.logger.log(
-      `SAP'ten depo=${whsCode} için ${sapStocks.length} stok kaydı geldi.`,
-    );
-
-    // 2) Mevcut kayıtları (ilgili depo için) sil
-    await this.prisma.itemWarehouseStock.deleteMany({
-      where: { WhsCode: whsCode },
-    });
-
-    // 3) Upsert mantığı ile yeni kayıtları yaz
     let created = 0;
-    for (const s of sapStocks) {
-      // İlgili Item'ı bul (ItemCode'a göre)
-      const item = await this.prisma.item.findUnique({
-        where: { ItemCode: s.ItemCode },
+    let updated = 0;
+    let linesUpserted = 0;
+    let linesDeleted = 0;
+
+    for (const o of orders) {
+      const docEntry = Number(o.DocEntry);
+      if (!docEntry || Number.isNaN(docEntry)) continue;
+
+      // 1) Header upsert
+      const existing = await this.prisma.openSalesOrder.findUnique({
+        where: { docEntry },
         select: { id: true },
       });
 
-      if (!item) {
-        // Item tablosunda yoksa şimdilik atla
-        this.logger.warn(
-          `Depo=${whsCode} için stok kaydı atlandı; ItemCode=${s.ItemCode} Item tablosunda yok.`,
-        );
-        continue;
+      const headerData = {
+        docNum: o.DocNum ?? null,
+        cardCode: o.CardCode ?? null,
+        cardName: o.CardName ?? null,
+        docDate: o.DocDate ? new Date(o.DocDate) : null,
+        docDueDate: o.DocDueDate ? new Date(o.DocDueDate) : null,
+        docTotal: o.DocTotal ?? null,
+        docTotalFc: o.DocTotalFc ?? null,
+        docCurrency: o.DocCurrency ?? null,
+        comments: o.Comments ?? null,
+        documentStatus: o.DocumentStatus ?? null,
+        cancelled: o.Cancelled ?? null,
+        // serialNo'ya dokunmuyoruz
+      };
+
+      const saved = await this.prisma.openSalesOrder.upsert({
+        where: { docEntry },
+        create: {
+          docEntry,
+          ...headerData,
+          serialNo: null,
+        },
+        update: headerData,
+        select: { id: true },
+      });
+
+      if (existing) updated++;
+      else created++;
+
+      // 2) Lines upsert
+      const lines = o.DocumentLines ?? [];
+      const seenLineNums: number[] = [];
+
+      for (const ln of lines) {
+        const lineNum = Number(ln.LineNum);
+        if (Number.isNaN(lineNum)) continue;
+
+        seenLineNums.push(lineNum);
+
+        await this.prisma.openSalesOrderLine.upsert({
+          where: {
+            orderId_lineNum: {
+              orderId: saved.id,
+              lineNum,
+            },
+          },
+          create: {
+            orderId: saved.id,
+            docEntry,
+            lineNum,
+
+            itemCode: ln.ItemCode ?? null,
+            itemDescription: ln.ItemDescription ?? null,
+
+            quantity: ln.Quantity ?? null,
+            unitPrice: ln.Price ?? null,
+            currency: ln.Currency ?? null,
+            rate: ln.Rate ?? null,
+
+            warehouseCode: ln.WarehouseCode ?? null,
+
+            lineTotal: ln.LineTotal ?? null,
+            rowTotalFC: ln.RowTotalFC ?? null,
+            rowTotalSC: ln.RowTotalSC ?? null,
+
+            lineStatus: ln.LineStatus ?? null,
+            shipDate: ln.ShipDate ? new Date(ln.ShipDate) : null,
+          },
+          update: {
+            itemCode: ln.ItemCode ?? null,
+            itemDescription: ln.ItemDescription ?? null,
+
+            quantity: ln.Quantity ?? null,
+            unitPrice: ln.Price ?? null,
+            currency: ln.Currency ?? null,
+            rate: ln.Rate ?? null,
+
+            warehouseCode: ln.WarehouseCode ?? null,
+
+            lineTotal: ln.LineTotal ?? null,
+            rowTotalFC: ln.RowTotalFC ?? null,
+            rowTotalSC: ln.RowTotalSC ?? null,
+
+            lineStatus: ln.LineStatus ?? null,
+            shipDate: ln.ShipDate ? new Date(ln.ShipDate) : null,
+            docEntry,
+          },
+        });
+
+        linesUpserted++;
       }
 
-      // Warehouse kaydını bul / oluştur
-      const warehouse = await this.prisma.warehouse.upsert({
-        where: { WhsCode: s.WhsCode },
-        create: {
-          WhsCode: s.WhsCode,
-          WhsName: s.WhsCode, // İleride gerçek isimle güncellersin
-        },
-        update: {},
-      });
-
-      await this.prisma.itemWarehouseStock.upsert({
+      // 3) (Opsiyon ama sağlam) SAP’te artık olmayan satırları DB’den sil
+      const del = await this.prisma.openSalesOrderLine.deleteMany({
         where: {
-          itemId_warehouseId: {
-            itemId: item.id,
-            warehouseId: warehouse.id,
-          },
-        },
-        update: {
-          ItemCode: s.ItemCode,
-          WhsCode: s.WhsCode,
-          InStock: s.InStock,
-          IsCommited: s.IsCommited ?? null,
-          OnOrder: s.OnOrder ?? null,
-        },
-        create: {
-          itemId: item.id,
-          warehouseId: warehouse.id,
-          ItemCode: s.ItemCode,
-          WhsCode: s.WhsCode,
-          InStock: s.InStock,
-          IsCommited: s.IsCommited ?? null,
-          OnOrder: s.OnOrder ?? null,
+          orderId: saved.id,
+          lineNum: { notIn: seenLineNums.length ? seenLineNums : [-1] },
         },
       });
-
-      created++;
+      linesDeleted += del.count;
     }
 
-    this.logger.log(
-      `Depo=${whsCode} stok senkron tamamlandı ✅ ${created} kayıt eklendi/güncellendi.`,
-    );
+    const result = {
+      fetched: orders.length,
+      created,
+      updated,
+      linesUpserted,
+      linesDeleted,
+    };
 
-    return { whsCode, count: created };
-  }
-
-  /**
-   * 🔴 Buradaki implementasyonu SAP tarafına göre dolduracağız.
-   * Şimdilik mock / TODO bırakıyorum.
-   */
-  private async fetchSapStocksForWarehouse(
-    whsCode: string,
-  ): Promise<SapWarehouseStock[]> {
-    // 1) En sağlıklısı: SAP Query Manager'da bir SQL Query kaydet:
-    //   SELECT
-    //     T0."ItemCode",
-    //     T0."WhsCode",
-    //     T0."OnHand"    AS "InStock",
-    //     T0."IsCommited",
-    //     T0."OnOrder"
-    //   FROM OITW T0
-    //   WHERE T0."WhsCode" = /* WhsCode */ '[%0]'
-    //
-    // 2) Bu Query'ye bir kod ver (ör: Z_ITEM_STOCK_BY_WHS)
-    // 3) Service Layer'da SQLQueries endpoint'i ile çağır:
-    //
-    // ÖRNEK pseudo-code (SapService tarafında bu fonksiyonu yazabilirsin):
-    //
-    // const res = await this.sap.callSqlQuery('Z_ITEM_STOCK_BY_WHS', [whsCode]);
-
-    // Şimdilik TODO:
-    const res: any = await this.sap.get('SQLQueries', {
-      // Bu kısım SAP versiyonuna göre değişecek;
-      // sadece imza / yapı için placeholder.
-      params: {},
-    });
-
-    // TODO: res.value içindeki alan isimlerini kendi Query'ine göre map et
-    const stocks: SapWarehouseStock[] = (res.value || []).map((row: any) => ({
-      ItemCode: row.ItemCode,
-      WhsCode: row.WhsCode,
-      InStock: row.InStock,
-      IsCommited: row.IsCommited,
-      OnOrder: row.OnOrder,
-    }));
-
-    return stocks;
+    this.logger.log(`✔️ Sync bitti: ${JSON.stringify(result)}`);
+    return result;
   }
 }

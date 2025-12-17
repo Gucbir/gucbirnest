@@ -125,6 +125,7 @@ model ProductionOrder {
   itemName    String
   quantity    Float
   status      String @default("planned") // planned | in_progress | done | cancelled
+  serialNo      String
 
   // Bir üretim siparişinin tüm operasyonları
   operations ProductionOperation[]
@@ -191,3 +192,91 @@ createdAt DateTime @default(now())
 updatedAt   DateTime   @updatedAt
 
 }
+
+model OpenSalesOrder {
+  id            Int      @id @default(autoincrement())
+
+  // SAP anahtar
+  docEntry      Int      @unique
+  docNum        Int?
+
+  cardCode      String?
+  cardName      String?
+
+  docDate       DateTime?
+  docDueDate    DateTime?
+
+  docTotal      Float?
+  docTotalFc    Float?
+  docCurrency   String?
+
+  comments      String?
+
+  documentStatus String? // bost_Open / bost_Close
+  cancelled      String? // tNO / tYES
+
+  // Bizim atayacağımız kimlik
+  serialNo      String?  @unique
+
+  // Sync bilgisi
+  syncedAt      DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  lines          OpenSalesOrderLine[]
+}
+
+model OpenSalesOrderLine {
+  id        Int  @id @default(autoincrement())
+
+  // FK
+  orderId   Int
+  order     OpenSalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // SAP line identity
+  lineNum   Int           // DocumentLines.LineNum
+  docEntry  Int           // kolay sorgu için (redundant ama faydalı)
+
+  // temel ürün bilgisi
+  itemCode        String?
+  itemDescription String?
+
+  quantity        Float?
+  unitPrice       Float?
+  currency        String?
+  rate            Float?
+
+  warehouseCode   String?
+
+  lineTotal       Float?
+  rowTotalFC      Float?
+  rowTotalSC      Float?
+
+  lineStatus      String? // bost_Open / bost_Close (satır durumu)
+
+  shipDate        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orderId, lineNum]) // aynı sipariş içinde line num tekil
+  @@index([docEntry])
+  @@index([itemCode])
+}
+
+
+model ProductionStructureCache {
+  id          Int      @id @default(autoincrement())
+  itemCode    String   @unique
+
+  // Snapshot data (senin return ettiğin yapı)
+  data        Json
+
+  // Versiyon / invalidation için alanlar
+  dataHash    String?  // JSON hash (değişti mi anlamak için)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([itemCode])
+}
+
+

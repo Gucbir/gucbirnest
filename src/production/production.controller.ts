@@ -2,51 +2,38 @@ import {
   Body,
   Controller,
   Post,
-  UseGuards,
   Param,
   Get,
   Patch,
-  Req,
   BadRequestException,
 } from '@nestjs/common';
-import { ProductionService, ProductionStageCode } from './production.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ProductionService } from './production.service';
 
-const STAGE_CODE_MAP: Record<string, ProductionStageCode> = {
-  AKUPLE: 'AKUPLE',
-  MOTOR_MONTAJ: 'MOTOR_MONTAJ',
-  PANO_TESISAT: 'PANO_TESISAT',
-  TEST: 'TEST',
-  KABIN_GIYDIRME: 'KABIN_GIYDIRME',
-};
-//@UseGuards(JwtAuthGuard)
+// @UseGuards(JwtAuthGuard)
 @Controller('production')
 export class ProductionController {
-  // Nest tarzı: constructor parametresinden field tanımı
   constructor(private readonly productionService: ProductionService) {}
 
   @Post('import-from-orders')
   async importFromOrders(@Body() dto: any) {
-    // dto = { orderIds: [...] }
     return this.productionService.importFromOrders(dto);
   }
 
-  // Departman kuyruğu (AKUPLE, MOTOR, TESISAT vs)
+  // Departman kuyruğu (AKUPLE, MOTOR_MONTAJ, TESISAT vs)
   @Get('station/:department/queue')
   async getStationQueue(@Param('department') department: string) {
     return this.productionService.getQueueForDepartment(
-      department.toUpperCase(),
+      (department || '').trim().toUpperCase(),
     );
   }
 
-  // Operasyon detay
+  // Operasyon detay (AKUPLE ekranı için items şart)
   @Get('operations/:id')
   async getOperationDetail(@Param('id') id: string) {
-    console.log(id, '\n\n\n\n');
     return this.productionService.getOperationDetail(Number(id));
   }
 
-  // production.controller.ts
+  // Başla / Bitir (UI post atıyor, bu kalsın)
   @Post('operations/:operationId/start')
   async startOperation(@Param('operationId') operationId: string) {
     return this.productionService.startOperation(Number(operationId));
@@ -57,7 +44,7 @@ export class ProductionController {
     return this.productionService.finishOperation(Number(operationId));
   }
 
-  // 🔥 Belirli bir satır için alternatif / seçilen ürünü kaydet + stok düş
+  // Alternatif / orijinal seçimi
   @Patch('operations/:operationId/items/:itemId/select')
   async selectItemForOperationLine(
     @Param('operationId') operationId: string,
@@ -66,11 +53,11 @@ export class ProductionController {
     body: {
       useAlternative: boolean;
       selectedItemCode?: string;
+      selectedItemName?: string;
       selectedWarehouseCode?: string;
       selectedQuantity?: number;
     },
   ) {
-    // body: { selectedItemCode, selectedItemName, warehouseCode, quantity }
     return this.productionService.selectItemForOperationLine(
       Number(operationId),
       Number(itemId),
@@ -78,26 +65,24 @@ export class ProductionController {
     );
   }
 
-  // 🔥 DİNAMİK ENDPOINT
+  // ✅ DİNAMİK: stageCode direkt kullan (AKUPLE sabit başlayacak dedin)
+  // UI: /production/operations/stage/akuple
   @Get('operations/stage/:stageCode')
   async getOperations(@Param('stageCode') stageCodeParam: string) {
-    const normalized = stageCodeParam.toUpperCase();
-    console.log('➡ getOperations stageCodeParam =', stageCodeParam);
+    const normalized = (stageCodeParam || '').trim().toUpperCase();
 
-    if (!STAGE_CODE_MAP[normalized]) {
-      throw new BadRequestException(
-        `Geçersiz stageCode: ${stageCodeParam}. Geçerli değerler: ${Object.keys(
-          STAGE_CODE_MAP,
-        ).join(', ')}`,
-      );
+    const stage =
+      await this.productionService.resolveStageByCodeOrName(normalized);
+    if (!stage) {
+      throw new BadRequestException(`Geçersiz stageCode: ${stageCodeParam}`);
     }
 
-    const stageCode = STAGE_CODE_MAP[normalized];
-
-    return this.productionService.getOperations(stageCode);
+    return this.productionService.getOperations(
+      stage.code || stage.departmentCode,
+    );
   }
 
-  // İstersen eski /akuple endpointini de alias olarak bırakabilirsin:
+  // Alias kalsın
   @Get('akuple')
   async getAkupleOperations() {
     return this.productionService.getOperations('AKUPLE');

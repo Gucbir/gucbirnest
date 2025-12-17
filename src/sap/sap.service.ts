@@ -3,6 +3,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import * as https from 'https';
+import crypto from 'crypto';
 
 export interface SapUser {
   InternalKey: number;
@@ -112,16 +113,17 @@ export class SapService {
 
     return stocks;
   }
-  // async getWarehouseStocks(whsCode: string) {
-  //   const res: any = await this.get('B1_ItemWarehouseStock', {
-  //     params: {
-  //       $filter: `WhsCode eq '${whsCode}'`,
-  //       $top: 10000, // depo başına max kaç satır bekliyorsan
-  //     },
-  //   });
 
-  //   return res?.value || [];
-  // }
+  async getWarehouseStocks(whsCode: string) {
+    const res: any = await this.get('B1_ItemWarehouseStock', {
+      params: {
+        $filter: `WhsCode eq '${whsCode}'`,
+        $top: 10000, // depo başına max kaç satır bekliyorsan
+      },
+    });
+
+    return res?.value || [];
+  }
 
   async getItemsPage(top: number, skip: number) {
     return this.get('Items', {
@@ -275,6 +277,7 @@ export class SapService {
   // }
 
   async getBomByItemCode(itemCode) {
+    console.log(itemCode, '23423424234234234');
     this.logger.log(`[SapService] getBomByItemCode: itemCode=${itemCode}`);
     const body = {
       ParamList: `ItemCode='${itemCode}'`,
@@ -289,7 +292,6 @@ export class SapService {
     const res = await this.post(`/SQLQueries('RoutingStages')/List`, {});
     const rows = res.value || [];
 
-    console.log(rows);
     return rows.map((r) => ({
       stageId: r.AbsEntry, // ITT1.StageID ile eşleşecek
       code: r.Code, // "AKUPLE"
@@ -301,97 +303,102 @@ export class SapService {
    * Ürün kodundan üretim yapısı (rota aşamaları + kalemler)
    * BomByItemCode + RoutingStages sonuçlarını birleştirir.
    */
-  async getProductionStructureByItemCode(itemCode: string) {
-    // 1) BOM satırları + rota stage’leri
-    let [bomResult, routingStages] = await Promise.all([
+  async buildProductionStructureFromSap(itemCode: string) {
+    // 1) BOM satırları + stage master
+    const [bomResult, routingStages] = await Promise.all([
       this.getBomByItemCode(itemCode), // SQLQueries('BomByItemCode')
-      this.getRoutingStages(), // ORST
+      this.getRoutingStages(), // ORST (AbsEntry, Name, Code vs.)
     ]);
-
-    // SAP SQLQueries response’unda asıl data .value içinde
+    console.log(bomResult, 'bommmmmm', routingStages);
     const bomLines: any[] = bomResult?.value ?? [];
 
-    // 2) ORST’ten gelen stage’leri map’le (genel kullanım için dursun)
-    const stageMap = new Map<number, { code: string; name: string }>();
+    // 2) ORST stage map (StageId -> {code,name,sequenceNo,departmentCode})
+    const stageMap = new Map<number, any>();
+
     for (const s of routingStages ?? []) {
-      const sid = Number(s.stageId ?? s.AbsEntry ?? 0);
+      const sid = Number(s.AbsEntry ?? s.stageId ?? s.StageId ?? 0);
       if (!sid) continue;
 
+      const code = (s.Code ?? s.code ?? '').toString().trim();
+      const name = (s.Name ?? s.name ?? '').toString().trim();
+
+      // Bazı sistemlerde Sequence / Sort alanı farklı olabilir
+      const sequenceNo = Number(s.SequenceNo ?? s.sequenceNo ?? sid * 10);
+
       stageMap.set(sid, {
-        code: s.code || s.Code,
-        name: s.name || s.Name,
+        stageId: sid,
+        code: code || name || `STAGE_${sid}`,
+        name: name || code || `STAGE_${sid}`,
+        departmentCode: code || name || `STAGE_${sid}`,
+        sequenceNo: sequenceNo || sid * 10,
       });
     }
-
-    // 3) Jeneratör üretimi için StageId → AKUPLE / MOTOR MONTAJ / PANO VE TESİSAT override
-    const STAGE_OVERRIDE: Record<
-      number,
-      { code: string; name: string; departmentCode: string }
-    > = {
-      1: { code: 'AKUPLE', name: 'AKUPLE', departmentCode: 'AKUPLE' },
-      2: {
-        code: 'MOTOR_MONTAJ',
-        name: 'MOTOR MONTAJ',
-        departmentCode: 'MOTOR',
-      },
-      3: {
-        code: 'PANO_TESISAT',
-        name: 'PANO VE TESİSAT',
-        departmentCode: 'TESISAT',
-      },
-      // ileride ihtiyaç olursa 4: TEST vs. eklenir
-    };
-
-    // 4) StageId’ye göre grupla
+    console.log(stageMap);
+    // 3) StageId’ye göre grupla
     const stagesMap = new Map<number, any>();
 
     for (const line of bomLines) {
+      console.log(line);
       const sid = Number(line.StageId ?? line.stageId ?? 0) || 0;
 
-      // Önce override’a bak, yoksa ORST’ten geleni kullan, o da yoksa GENEL
-      const override = STAGE_OVERRIDE[sid];
+      // Eğer SQLQuery’ye StageName eklediysen önce onu kullan
+      const lineStageName = (line.StageName ?? line.stageName ?? '')
+        .toString()
+        .trim();
+      console.log(lineStageName, '111111111');
       const base = stageMap.get(sid);
-      const stageInfo = override ??
-        (base && { ...base, departmentCode: base.code }) ?? {
-          code: 'GENEL',
-          name: 'GENEL',
-          departmentCode: 'GENEL',
-        };
+
+      const stageInfo = (lineStageName
+        ? {
+            stageId: sid,
+            code: base?.code || lineStageName,
+            name: lineStageName,
+            departmentCode: base?.departmentCode || base?.code || lineStageName,
+            sequenceNo: base?.sequenceNo || sid * 10 || 999,
+          }
+        : base) || {
+        stageId: sid,
+        code: 'GENEL',
+        name: 'GENEL',
+        departmentCode: 'GENEL',
+        sequenceNo: 999,
+      };
 
       if (!stagesMap.has(sid)) {
         stagesMap.set(sid, {
-          stageId: sid,
+          stageId: stageInfo.stageId,
           code: stageInfo.code,
           name: stageInfo.name,
           departmentCode: stageInfo.departmentCode,
-          sequenceNo: sid * 10 || 999, // 1→10, 2→20, 3→30
+          sequenceNo: stageInfo.sequenceNo,
           lines: [],
         });
       }
 
       const stage = stagesMap.get(sid);
 
-      // SAP kolon adlarını doğru alanlara map’leyelim
       stage.lines.push({
         itemCode: line.ItemCode ?? line.itemCode ?? '',
         itemName: line.ItemName ?? line.itemName ?? '',
         quantity: Number(line.Quantity ?? line.quantity ?? 0),
         uomName: line.UomName ?? line.uomName ?? '',
-        warehouseCode: line.WhsCode ?? line.warehouseCode ?? '',
+        warehouseCode: line.WhsCode ?? line.whsCode ?? line.warehouseCode ?? '',
         issueMethod: line.IssueMethod ?? line.issueMethod ?? '',
-        lineNo: line.VisOrder ?? line.lineNo ?? 0,
+        lineNo: Number(line.VisOrder ?? line.visOrder ?? line.lineNo ?? 0),
       });
     }
 
-    // 5) Stage’leri sırala
-    const stages = Array.from(stagesMap.values()).sort(
-      (a, b) => a.sequenceNo - b.sequenceNo,
-    );
+    // 4) Stage’leri sırala + satırları VisOrder’a göre sırala
+    const stages = Array.from(stagesMap.values())
+      .map((s) => ({
+        ...s,
+        lines: (s.lines || []).sort(
+          (a, b) => (a.lineNo ?? 0) - (b.lineNo ?? 0),
+        ),
+      }))
+      .sort((a, b) => (a.sequenceNo ?? 999) - (b.sequenceNo ?? 999));
 
-    return {
-      itemCode,
-      stages,
-    };
+    return { itemCode, stages };
   }
 
   private async request<T = any>(
@@ -503,6 +510,64 @@ export class SapService {
     return map;
   }
 
+  // async getOpenSalesOrders() {
+  //   const result: any[] = [];
+  //   let skip = 0;
+  //   const top = 200;
+
+  //   while (true) {
+  //     const res = await this.get('Orders', {
+  //       params: {
+  //         $select:
+  //           'DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal,DocTotalFC,DocCurrency,Comments,DocStatus,CANCELED',
+  //         $filter: "DocStatus eq 'O' and CANCELED eq 'N'",
+  //         $top: top,
+  //         $skip: skip,
+  //       },
+  //     });
+
+  //     const rows = res?.value ?? [];
+  //     if (rows.length === 0) break;
+
+  //     result.push(...rows);
+  //     skip += top;
+  //   }
+
+  //   return result;
+  // }
+
+  // sap.service.ts
+  async getOpenSalesOrdersWithLines(top = 50, skip = 0) {
+    return this.get('Orders', {
+      params: {
+        $select:
+          'DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal,DocTotalFc,DocCurrency,Comments,DocumentStatus,Cancelled',
+        $filter: "DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'",
+        $orderby: 'DocEntry asc',
+        $top: top,
+        $skip: skip,
+        $expand:
+          'DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,Price,Currency,Rate,WarehouseCode,LineTotal,RowTotalFC,RowTotalSC,LineStatus,ShipDate)',
+      },
+    });
+  }
+
+  async getAllOpenSalesOrdersWithLines(pageSize = 50, maxPages = 200) {
+    const all: any[] = [];
+    let skip = 0;
+
+    for (let page = 0; page < maxPages; page++) {
+      const res = await this.getOpenSalesOrdersWithLines(pageSize, skip);
+      const rows = res?.value ?? [];
+      if (rows.length === 0) break;
+
+      all.push(...rows);
+      skip += pageSize;
+    }
+
+    return all;
+  }
+
   // Public helper metotlar:
   async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
     return this.request<T>('GET', url, undefined, config);
@@ -526,5 +591,41 @@ export class SapService {
 
   async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
     return this.request<T>('DELETE', url, undefined, config);
+  }
+
+  async postAll<T = any>(
+    path: string,
+    body: any,
+    pageSize = 1000,
+  ): Promise<T[]> {
+    const all: T[] = [];
+
+    // 1) ilk sayfa: POST
+    let data: any = await this.post(path, body, {
+      headers: { Prefer: `odata.maxpagesize=${pageSize}` },
+    });
+
+    all.push(...(data?.value ?? []));
+
+    // 2) varsa nextLink → GET ile devam
+    let nextLink: string | undefined =
+      data?.['@odata.nextLink'] ?? data?.['odata.nextLink'];
+
+    while (nextLink) {
+      const normalized = nextLink.includes('/b1s/v1/')
+        ? nextLink.split('/b1s/v1/')[1]
+        : nextLink.startsWith('/')
+          ? nextLink.slice(1)
+          : nextLink;
+
+      data = await this.get(normalized, {
+        headers: { Prefer: `odata.maxpagesize=${pageSize}` },
+      });
+
+      all.push(...(data?.value ?? []));
+      nextLink = data?.['@odata.nextLink'] ?? data?.['odata.nextLink'];
+    }
+
+    return all;
   }
 }

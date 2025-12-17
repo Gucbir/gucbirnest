@@ -1,10 +1,14 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { SapService, SapUser } from './sap.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('sap')
 export class SapController {
-  constructor(private readonly sapService: SapService) {}
+  constructor(
+    private readonly sapService: SapService,
+    private readonly prisma: PrismaService,
+  ) {}
   // @UseGuards(JwtAuthGuard)
   // @Get('users')
   // async getSapUsers() {
@@ -62,8 +66,73 @@ export class SapController {
   }
 
   @Get('warehouses/:code/stocks')
-  async listWarehouseStocks(@Param('code') code: string) {
-    return this.sapService.getWarehouseStocks(code);
+  async listWarehouseStocks(
+    @Param('code') code: string,
+    @Query('onlyPositive') onlyPositive?: string,
+    @Query('limit') limit?: string,
+    @Query('q') q?: string,
+  ) {
+    const onlyPos = onlyPositive !== 'false'; // default true
+    const take = Math.min(Number(limit ?? 500), 5000);
+
+    const warehouse = await this.prisma.warehouse.findUnique({
+      where: { WhsCode: code },
+      select: { id: true, WhsCode: true, WhsName: true },
+    });
+
+    if (!warehouse) {
+      return {
+        warehouse: { WhsCode: code, WhsName: null },
+        count: 0,
+        items: [],
+        message: 'Warehouse not found in PostgreSQL (run warehouse sync).',
+      };
+    }
+
+    const where: any = { warehouseId: warehouse.id };
+    if (onlyPos) where.InStock = { gt: 0 };
+
+    if (q && q.trim()) {
+      where.OR = [
+        { ItemCode: { contains: q.trim(), mode: 'insensitive' } },
+        { item: { ItemName: { contains: q.trim(), mode: 'insensitive' } } },
+      ];
+    }
+
+    const rows = await this.prisma.itemWarehouseStock.findMany({
+      where,
+      take,
+      orderBy: [{ InStock: 'desc' }, { ItemCode: 'asc' }],
+      select: {
+        itemId: true,
+        warehouseId: true,
+        ItemCode: true,
+        InStock: true,
+        IsCommited: true,
+        OnOrder: true,
+        updatedAt: true,
+        item: { select: { ItemName: true, ForeignName: true } },
+        warehouse: { select: { WhsCode: true, WhsName: true } },
+      },
+    });
+
+    return {
+      warehouse: { WhsCode: warehouse.WhsCode, WhsName: warehouse.WhsName },
+      count: rows.length,
+      items: rows.map((r) => ({
+        itemId: r.itemId,
+        warehouseId: r.warehouseId,
+        ItemCode: r.ItemCode,
+        ItemName: r.item?.ItemName ?? null,
+        ForeignName: r.item?.ForeignName ?? null,
+        InStock: r.InStock,
+        IsCommited: r.IsCommited,
+        OnOrder: r.OnOrder,
+        updatedAt: r.updatedAt,
+        WhsCode: r.warehouse?.WhsCode ?? warehouse.WhsCode,
+        WhsName: r.warehouse?.WhsName ?? warehouse.WhsName,
+      })),
+    };
   }
 
   // 1) Login testi – sadece Login çalışıyor mu görelim

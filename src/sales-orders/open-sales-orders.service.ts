@@ -8,25 +8,60 @@ export class OpenSalesOrdersService {
   constructor(private readonly sap: SapService) {}
 
   async getOpenOrders() {
-    this.logger.log('SAP → OpenSalesOrders sorgusu çağırılıyor...');
+    this.logger.log('SAP Service Layer → Open Orders çekiliyor...');
 
-    // SQLQueries('OpenSalesOrders')/List endpointine direkt istek
-    const res: any = await this.sap.get(`SQLQueries('OpenSalesOrders')/List`);
+    const PAGE_SIZE = 100;
+    let skip = 0;
+    const all: any[] = [];
 
-    const rows = res?.value || [];
+    while (true) {
+      const res: any = await this.sap.get(
+        `Orders?$select=DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocTotal,DocTotalFc,DocCurrency,Comments,DocumentStatus,Cancelled` +
+          `&$filter=DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'` +
+          `&$orderby=DocEntry desc` +
+          `&$top=${PAGE_SIZE}&$skip=${skip}`,
+      );
 
-    // SAP kolon isimlerini camelCase’e çeviriyoruz (görüntü için daha güzel)
-    return rows.map((x) => ({
+      const rows = res?.value || [];
+      if (rows.length === 0) break;
+
+      all.push(...rows);
+      skip += PAGE_SIZE;
+    }
+
+    return all.map((x) => ({
+      docEntry: x.DocEntry,
+      docNum: x.DocNum,
       docDate: x.DocDate,
       docDueDate: x.DocDueDate,
-      docNum: x.DocNum,
       cardCode: x.CardCode,
       cardName: x.CardName,
       docTotal: x.DocTotal,
-      docTotalFC: x.DocTotalFC,
-      docCur: x.DocCur,
-      canceled: x.CANCELED,
-      docStatus: x.DocStatus,
+      docTotalFC: x.DocTotalFc,
+      docCur: x.DocCurrency, // ✅
+      comments: x.Comments || '', // ✅ ORDR Comments
+      docStatus: x.DocumentStatus, // ✅
+      canceled: x.Cancelled, // ✅
+    }));
+  }
+
+  async getOrderLines(docEntry: number) {
+    const res: any = await this.sap.post(
+      `SQLQueries('SalesOrderLinesByDocEntry')/List`,
+      { ParamList: `docEntry=${docEntry}` },
+    );
+
+    const rows = res?.value || [];
+
+    return rows.map((x: any) => ({
+      docEntry: x.DocEntry,
+      lineNum: x.LineNum,
+      itemCode: x.ItemCode,
+      itemName: x.ItemName,
+      quantity: x.Quantity,
+      uom: x.Uom,
+      serialNum: x.SerialNum || '', // ✅ RDR1.SerialNum
+      description: x.OrderComments || '', // ✅ ORDR.Comments
     }));
   }
 }
