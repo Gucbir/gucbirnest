@@ -10,7 +10,10 @@ generator client {
 model User {
   id             Int      @id @default(autoincrement())
   fullName       String
-  email          String   @unique
+  email          String?    
+  vkn            String   @unique
+  phone          String
+  
   passwordHash   String
   role           String   @default("User")
   isActive       Boolean  @default(true)
@@ -187,6 +190,7 @@ model Form {
 id Int @id @default(autoincrement())
 name String @unique
 values Json
+orderNo   Int 
 
 createdAt DateTime @default(now())
 updatedAt   DateTime   @updatedAt

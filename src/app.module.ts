@@ -12,6 +12,7 @@ import { SapService } from './sap/sap.service';
 import { UsersService } from './users/users.service';
 import { ItemsSyncModule } from './items-sync/items-sync.module';
 import { WarehouseModule } from './items-sync/warehouse.module';
+import { UserModule } from './items-sync/users.module';
 import { OpenSalesOrdersModule } from './sales-orders/open-sales-orders.module';
 import { PurchaseRequestsModule } from './purchases/purchase-requests.module';
 import { SapUsersModule } from './sap-users/sap-users.module';
@@ -32,6 +33,7 @@ import { OpenSalesOrderSyncModule } from './items-sync/open-sales-order-sync.mod
     ItemsModule,
     ItemsSyncModule,
     WarehouseModule,
+    UserModule,
     OpenSalesOrdersModule,
     PurchaseRequestsModule,
     SapUsersModule,

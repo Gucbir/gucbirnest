@@ -12,28 +12,42 @@ export class UsersService {
    */
   async createUser(
     fullName: string,
-    email: string,
+    vkn: string,
+    phone: string,
     password: string,
+    email?: string,
+    department?: string,
   ): Promise<User> {
     const passwordHash = await bcrypt.hash(password, 10);
 
     return this.prisma.user.create({
       data: {
         fullName,
+        vkn,
+        phone,
         email,
+        department,
         passwordHash,
+        role: 'User',
+        isActive: true,
       },
     });
   }
 
   /**
-   * Login vs işlemler için email ile kullanıcı bul
+   * Login vs işlemler için vkn ile kullanıcı bul
    */
-  async findByEmail(email: string): Promise<User | null> {
+  async findByVkn(vkn: string): Promise<User | null> {
     return this.prisma.user.findUnique({
-      where: { email },
+      where: { vkn },
     });
   }
+
+  // async findByEmail(email: string): Promise<User | null> {
+  //   return this.prisma.user.findUnique({
+  //     where: { email },
+  //   });
+  // }
 
   /**
    * ID ile kullanıcı bul
@@ -67,8 +81,8 @@ export class UsersService {
   /**
    * Login doğrulama için email+şifre kontrolü
    */
-  async validateUser(email: string, password: string): Promise<User | null> {
-    const user = await this.findByEmail(email);
+  async validateUser(vkn: string, password: string): Promise<User | null> {
+    const user = await this.findByVkn(vkn);
     if (!user) return null;
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
