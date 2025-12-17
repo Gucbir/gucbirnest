@@ -5,6 +5,7 @@ import { ItemsSyncService } from '../items-sync/items-sync.service';
 import { ItemStockSyncService } from '../items-sync/item-stock-sync.service';
 import { WarehouseSyncService } from '../items-sync/warehouse-sync.service';
 import { SapUsersSyncService } from '../sap-users/sap-users-sync.service';
+import { UsersSyncService } from '../items-sync/users-sync.service'; // ✅ EKLENDİ
 
 const bootstrap = async () => {
   const [, , command, arg1] = process.argv; // node control.js <command>
@@ -59,6 +60,12 @@ const bootstrap = async () => {
     console.log('✔️ [stock:sync] Tamamlandı:', result);
   }
 
+  async function runUsersImport(UsersSyncService: UsersSyncService) {
+    console.log('🚀 [users:import] Excel → PostgreSQL User import başlıyor...');
+    await UsersSyncService.importFromExcel();
+    console.log('✔️ [users:sync] Import tamamlandı.');
+  }
+
   try {
     switch (command) {
       case 'items:sync':
@@ -81,7 +88,10 @@ const bootstrap = async () => {
       // case 'warehouses:sync':
       //   await runWarehousesSync(app.get(WarehouseSyncService));
       //   break;
-
+      case 'users:sync':
+      case 'users':
+        await runUsersImport(app.get(UsersSyncService));
+        break;
       default:
         console.error(`❌ Bilinmeyen komut: ${command}`);
         printHelp();

@@ -84,8 +84,8 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('setforms')
-  async setForms(@Body() body: { name: string; values: any }) {
-    return this.formsService.setForms(body.name, body.values);
+  async setForms(@Body() body: { name: string; values: any; orderNo: number }) {
+    return this.formsService.setForms(body.name, body.values, body.orderNo);
   }
 
   @UseGuards(JwtAuthGuard)

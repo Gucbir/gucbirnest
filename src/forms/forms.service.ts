@@ -6,11 +6,15 @@ import { Form } from '@prisma/client';
 export class FormsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async setForms(name: string, values: any): Promise<Form | null> {
+  async setForms(
+    name: string,
+    values: any,
+    orderNo: number,
+  ): Promise<Form | null> {
     return this.prisma.form.upsert({
       where: { name },
       update: { values },
-      create: { name, values },
+      create: { name, values, orderNo },
     });
   }
 

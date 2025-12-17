@@ -5,4 +5,4 @@
 
 */
 -- CreateIndex
-CREATE UNIQUE INDEX "Setting_name_key" ON "Setting"("name");
+-- CREATE UNIQUE INDEX "Setting_name_key" ON "Setting"("name");
