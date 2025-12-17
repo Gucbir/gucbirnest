@@ -79,6 +79,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('setsettings')
   async setSettings(@Body() body: { name: string; settings: any[] }) {
+    console.log(body);
     return this.settingsService.updateSetting(body.name, body.settings);
   }
 

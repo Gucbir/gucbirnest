@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ItemsSyncService } from '../items-sync/items-sync.service';
-import { ItemStockSyncService } from '../items-sync/item-stock-sync.service';
+import { OpenSalesOrderSyncService } from '../items-sync/item-stock-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SapService } from '../sap/sap.service';
 import { ItemsService } from './items.service';
@@ -11,10 +11,10 @@ import { ItemsController } from './items.controller';
   providers: [
     ItemsService,
     ItemsSyncService,
-    ItemStockSyncService,
+    OpenSalesOrderSyncService,
     PrismaService,
     SapService,
   ],
-  exports: [ItemsSyncService, ItemStockSyncService],
+  exports: [ItemsSyncService, OpenSalesOrderSyncService],
 })
 export class ItemsModule {}

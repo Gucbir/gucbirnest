@@ -18,6 +18,7 @@ import { SapUsersModule } from './sap-users/sap-users.module';
 import { ProductionModule } from './production/production.module';
 import { SettingsService } from './settings/settings.service';
 import { FormsService } from './forms/forms.service';
+import { OpenSalesOrderSyncModule } from './items-sync/open-sales-order-sync.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -35,6 +36,8 @@ import { FormsService } from './forms/forms.service';
     PurchaseRequestsModule,
     SapUsersModule,
     ProductionModule,
+    OpenSalesOrderSyncModule,
+
     // ileride: OrdersModule, StockModule, SalesModule, ...
   ],
   controllers: [AuthController],

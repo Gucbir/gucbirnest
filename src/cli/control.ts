@@ -2,9 +2,10 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../app.module';
 import { ItemsSyncService } from '../items-sync/items-sync.service';
-import { ItemStockSyncService } from '../items-sync/item-stock-sync.service';
+import {ItemStoc}
 import { WarehouseSyncService } from '../items-sync/warehouse-sync.service';
 import { SapUsersSyncService } from '../sap-users/sap-users-sync.service';
+import { OpenSalesOrderSyncService } from '../items-sync/open-sales-order-sync.service';
 
 const bootstrap = async () => {
   const [, , command, arg1] = process.argv; // node control.js <command>
@@ -17,47 +18,47 @@ const bootstrap = async () => {
     logger: ['log', 'error', 'warn'],
   });
 
-  async function runSapUsersSync(sapUsersSyncService) {
+  const runSapUsersSync = async (sapUsersSyncService) => {
     console.log(
       '🚀 [sapusers:sync] SAP → PostgreSQL Settings.settings (sapusers) senkronu başlatılıyor...',
     );
     const result = await sapUsersSyncService.syncSapUsers();
     console.log('✔️ [sapusers:sync] Tamamlandı:', result);
-  }
+  };
 
-  async function runItemsSync(itemsSyncService: ItemsSyncService) {
+  const runItemsSync = async (itemsSyncService: ItemsSyncService) => {
     console.log(
       '🚀 [items:sync] SAP → PostgreSQL item senkronu başlatılıyor...',
     );
     const result = await itemsSyncService.syncAllItems();
     console.log('✔️ [items:sync] Tamamlandı:', result);
-  }
+  };
 
-  async function runWarehousesSync(svc: WarehouseSyncService) {
+  const runWarehousesSync = async (svc: WarehouseSyncService) => {
     console.log(
       '🚀 [warehouses:sync] SAP → PostgreSQL warehouse senkronu başlatılıyor...',
     );
     const result = await svc.syncWarehouses();
     console.log('✔️ [warehouses:sync] Tamamlandı:', result);
-  }
+  };
 
-  async function runStockSync(
-    stockService: ItemStockSyncService,
-    whsCode?: string,
-  ) {
-    if (!whsCode) {
-      console.error(
-        '❌ [stock:sync] WhsCode parametresi eksik. Örn: yarn control stock:sync R1',
-      );
-      return;
-    }
-
+  const runStockSyncAll = async (svc: OpenSalesOrderSyncService) => {
     console.log(
-      `🚀 [stock:sync] SAP → PostgreSQL stok senkronu başlatılıyor. Depo=${whsCode}`,
+      `🚀 [stock:sync:all] Aktif depolar için stok senkronu başlıyor...`,
     );
-    const result = await stockService.syncWarehouseStocks(whsCode);
-    console.log('✔️ [stock:sync] Tamamlandı:', result);
-  }
+    const result = await svc.syncAllActiveWarehouses();
+    console.log(`✔️ [stock:sync:all] Tamamlandı:`, result);
+  };
+
+  const runOpenSalesOrderSync = async (svc: OpenSalesOrderSyncService) => {
+    console.log(
+      `🚀 [orders:sync:open] Açık satış siparişleri senkronu başlıyor...`,
+    );
+
+    const result = await svc.syncOpenSalesOrders();
+
+    console.log(`✔️ [orders:sync:open] Tamamlandı:`, result);
+  };
 
   try {
     switch (command) {
@@ -65,10 +66,11 @@ const bootstrap = async () => {
       case 'items':
         await runItemsSync(app.get(ItemsSyncService));
         break;
-      case 'stock:sync':
-      case 'stocks:sync':
-        await runStockSync(app.get(ItemStockSyncService), arg1);
+      case 'stock:sync:all':
+      case 'stocks:sync': {
+        await runStockSyncAll(app.get(ItemStockSyncService));
         break;
+      }
       case 'warehouses:sync':
       case 'warehouses':
         await runWarehousesSync(app.get(WarehouseSyncService));
@@ -78,6 +80,10 @@ const bootstrap = async () => {
       case 'sap-users':
         await runSapUsersSync(app.get(SapUsersSyncService));
         break;
+      case 'orders:sync:open': {
+        await runOpenSalesOrderSync(app.get(OpenSalesOrderSyncService));
+        break;
+      }
       // case 'warehouses:sync':
       //   await runWarehousesSync(app.get(WarehouseSyncService));
       //   break;
@@ -96,7 +102,7 @@ const bootstrap = async () => {
   }
 };
 
-function printHelp() {
+const printHelp = () => {
   console.log(`
 Kullanım:
   yarn control <komut>
@@ -107,6 +113,6 @@ Mevcut komutlar:
 Örnek:
   yarn control items:sync
 `);
-}
+};
 
 bootstrap();

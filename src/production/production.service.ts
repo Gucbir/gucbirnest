@@ -1,12 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SapService } from '../sap/sap.service';
-export type ProductionStageCode =
-  | 'AKUPLE'
-  | 'MOTOR_MONTAJ'
-  | 'PANO_TESISAT'
-  | 'TEST'
-  | 'KABIN_GIYDIRME';
+import crypto from 'crypto';
 
 @Injectable()
 export class ProductionService {
@@ -82,183 +77,34 @@ export class ProductionService {
     };
   }
 
-  /**
-   * Açık siparişlerden üretime aktar
-   * dto = { orderIds: [123, 124] }
-   */
-  // async importFromOrders(dto: any) {
-  //   // 1) Gelen DTO'dan sipariş numaralarını çek
-  //   const rawOrderIds = dto?.orderIds ?? [];
-  //   this.logger.log(
-  //     `[ProductionService] importFromOrders: raw orderIds = ${JSON.stringify(
-  //       rawOrderIds,
-  //     )}`,
-  //   );
+  async resolveStageByCodeOrName(input: string) {
+    const key = (input || '').trim().toUpperCase().replaceAll('_', ' ');
 
-  //   const orderIds = rawOrderIds
-  //     .map((x: any) => Number(x))
-  //     .filter((x) => !isNaN(x));
+    const s = await this.prisma.setting.findUnique({
+      where: { name: 'production_stages' },
+    });
 
-  //   this.logger.log(
-  //     `[ProductionService] importFromOrders: normalized orderIds = ${JSON.stringify(
-  //       orderIds,
-  //     )}`,
-  //   );
+    const arr = Array.isArray(s?.settings) ? (s.settings as any[]) : [];
+    const norm = (v: any) =>
+      String(v || '')
+        .trim()
+        .toUpperCase()
+        .replaceAll('_', ' ');
 
-  //   const result = {
-  //     requestedCount: orderIds.length,
-  //     importedOrders: [] as number[],
-  //     skippedExisting: [] as number[],
-  //     errors: [] as { orderId: number; message: string }[],
-  //   };
+    return arr.find((x: any) => {
+      return (
+        norm(x.code) === key ||
+        norm(x.name) === key ||
+        norm(x.departmentCode) === key
+      );
+    });
+  }
 
-  //   for (const orderId of orderIds) {
-  //     try {
-  //       this.logger.log(
-  //         `[ProductionService] >>> Processing orderId=${orderId}`,
-  //       );
-
-  //       // 2) Daha önce import edilmiş mi?
-  //       const existing = await this.prisma.productionOrder.findFirst({
-  //         where: {
-  //           OR: [{ sapDocEntry: orderId }, { sapDocNum: orderId }],
-  //         },
-  //       });
-
-  //       if (existing) {
-  //         this.logger.log(
-  //           `[ProductionService] Order ${orderId} already imported as productionOrder#${existing.id}`,
-  //         );
-  //         result.skippedExisting.push(orderId);
-  //         continue;
-  //       }
-
-  //       // 3) SAP'ten ürün ağacı + rota çek
-  //       const structure: any =
-  //         await this.sap.getProductionStructureByOrderId(orderId);
-
-  //       const header = structure?.header || null;
-  //       const stages: any[] = structure?.stages || [];
-
-  //       this.logger.log(
-  //         `[ProductionService] Order ${orderId} header: ${JSON.stringify(
-  //           header,
-  //         )}`,
-  //       );
-  //       this.logger.log(
-  //         `[ProductionService] Order ${orderId} stages count: ${stages.length}`,
-  //       );
-
-  //       if (!header || !header.itemCode) {
-  //         throw new Error(
-  //           `SAP header missing or itemCode empty for orderId=${orderId}`,
-  //         );
-  //       }
-
-  //       // 4) ProductionOrder kaydı
-  //       const order = await this.prisma.productionOrder.create({
-  //         data: {
-  //           sapDocEntry:
-  //             header.sapDocEntry !== undefined ? header.sapDocEntry : orderId,
-  //           sapDocNum:
-  //             header.sapDocNum !== undefined ? header.sapDocNum : orderId,
-  //           itemCode: header.itemCode,
-  //           itemName: header.itemName ?? '',
-  //           quantity: header.quantity ?? 0,
-  //           status: 'planned',
-  //         },
-  //       });
-
-  //       this.logger.log(
-  //         `[ProductionService] Created ProductionOrder#${order.id} for SAP DocNum=${orderId}`,
-  //       );
-
-  //       // 5) Rota aşamaları
-  //       let defaultSeq = 10;
-
-  //       for (const stage of stages) {
-  //         const op = await this.prisma.productionOperation.create({
-  //           data: {
-  //             orderId: order.id,
-  //             stageCode: stage.code,
-  //             stageName: stage.name,
-  //             departmentCode: stage.departmentCode || stage.code,
-  //             sequenceNo:
-  //               stage.sequenceNo !== undefined ? stage.sequenceNo : defaultSeq,
-  //             status: 'waiting',
-  //           },
-  //         });
-
-  //         this.logger.log(
-  //           `[ProductionService]   Created ProductionOperation#${op.id} (stage=${stage.code}) for order#${order.id}`,
-  //         );
-
-  //         defaultSeq += 10;
-
-  //         const lines: any[] = stage.lines || [];
-
-  //         // 6) Kalemler
-  //         for (const line of lines) {
-  //           const item = await this.prisma.productionOperationItem.create({
-  //             data: {
-  //               operationId: op.id,
-  //               itemCode: line.itemCode,
-  //               itemName: line.itemName ?? '',
-  //               quantity: line.quantity ?? 0,
-  //               uomName: line.uomName ?? '',
-  //               warehouseCode: line.warehouseCode ?? '',
-  //               issueMethod: line.issueMethod ?? '',
-  //               lineNo: line.lineNo ?? 0,
-  //             },
-  //           });
-
-  //           this.logger.log(
-  //             `[ProductionService]     Created ProductionOperationItem#${item.id} (${line.itemCode})`,
-  //           );
-  //         }
-  //       }
-
-  //       result.importedOrders.push(orderId);
-  //       this.logger.log(
-  //         `[ProductionService] <<< Order ${orderId} imported successfully`,
-  //       );
-  //     } catch (err: any) {
-  //       const msg = err?.message || String(err);
-  //       this.logger.error(
-  //         `[ProductionService] Order ${orderId} import failed: ${msg}`,
-  //         err?.stack,
-  //       );
-  //       result.errors.push({
-  //         orderId,
-  //         message: msg,
-  //       });
-  //     }
-  //   }
-
-  //   this.logger.log(
-  //     `[ProductionService] importFromOrders result: ${JSON.stringify(result)}`,
-  //   );
-
-  //   return result;
-  // }
   async importFromOrders(dto: any) {
-    // 1) Gelen DTO'dan sipariş numaralarını çek
     const rawOrderIds = dto?.orderIds ?? [];
-    this.logger.log(
-      `[ProductionService] importFromOrders: raw orderIds = ${JSON.stringify(
-        rawOrderIds,
-      )}`,
-    );
-
     const orderIds = rawOrderIds
       .map((x: any) => Number(x))
       .filter((x) => !isNaN(x));
-
-    this.logger.log(
-      `[ProductionService] importFromOrders: normalized orderIds = ${JSON.stringify(
-        orderIds,
-      )}`,
-    );
 
     const result = {
       requestedCount: orderIds.length,
@@ -273,7 +119,7 @@ export class ProductionService {
           `[ProductionService] >>> Processing orderId=${orderId}`,
         );
 
-        // 2) Daha önce import edilmiş mi?
+        // 1) Daha önce import edilmiş mi?
         const existing = await this.prisma.productionOrder.findFirst({
           where: {
             OR: [{ sapDocEntry: orderId }, { sapDocNum: orderId }],
@@ -288,25 +134,38 @@ export class ProductionService {
           continue;
         }
 
-        // 3) SAP'ten ürün ağacı + rota çek
-        // ❗❗ ÖNEMLİ: this.sap DEĞİL this.sapService olmalı
-        const structure: any =
-          await this.sap.getProductionStructureByOrderId(orderId);
-        this.logger.log(
-          `[ProductionService] Order ${orderId} raw structure: ` +
-            JSON.stringify(structure, null, 2),
-        );
-        const header = structure?.header || null;
-        const stages: any[] = structure?.stages || [];
+        // 2) Sipariş header'ını SAP'ten al (siparişe özgü)
+        const header = await this.sap.getOrderMainItemByDocNum(orderId);
+        console.log('HEADERRRRRR', header);
+
+        //          {
+        //   sapDocEntry: 5080,
+        //   sapDocNum: 5080,
+        //   itemCode: '6.202300040',
+        //   itemName: 'GJR33-MAR 33KVA OTOMATİK KABİNLİ MARANELLO ALTERNATÖRLÜ JENERATÖR SETİ',
+        //   quantity: 1
+        // }
+        if (!header || !header.itemCode) {
+          throw new Error(
+            `SAP header missing or itemCode empty for orderId=${orderId}`,
+          );
+        }
 
         this.logger.log(
-          `[ProductionService] Order ${orderId} header: ${JSON.stringify(
-            header,
-          )}`,
+          `[ProductionService] Order ${orderId} header: ${JSON.stringify(header)}`,
         );
+        console.log(header.itemCode, 'aaaaaaaaaaaaaaaaaaaaaaaa\n\n\n');
+        // 3) Üretim ağacını CACHE'li al (itemCode'a özgü)  ✅
+        const structureByItem: any = await this.getProductionStructureCached(
+          header.itemCode,
+        );
+
+        const stages: any[] = structureByItem?.stages || [];
+
         this.logger.log(
           `[ProductionService] Order ${orderId} stages count: ${stages.length}`,
         );
+
         this.logger.log(
           `[ProductionService] Order ${orderId} stages detail: ` +
             JSON.stringify(
@@ -320,11 +179,6 @@ export class ProductionService {
               2,
             ),
         );
-        if (!header || !header.itemCode) {
-          throw new Error(
-            `SAP header missing or itemCode empty for orderId=${orderId}`,
-          );
-        }
 
         // 4) ProductionOrder kaydı
         const order = await this.prisma.productionOrder.create({
@@ -337,6 +191,7 @@ export class ProductionService {
             itemName: header.itemName ?? '',
             quantity: header.quantity ?? 0,
             status: 'planned',
+            serialNo: await this.getNextProductionSerial(),
           },
         });
 
@@ -348,7 +203,6 @@ export class ProductionService {
         let defaultSeq = 10;
 
         for (const stage of stages) {
-          // AKUPLE hemen aktif, diğerleri planned olsun
           const initialStatus = stage.code === 'AKUPLE' ? 'waiting' : 'planned';
 
           const op = await this.prisma.productionOperation.create({
@@ -402,10 +256,7 @@ export class ProductionService {
           `[ProductionService] Order ${orderId} import failed: ${msg}`,
           err?.stack,
         );
-        result.errors.push({
-          orderId,
-          message: msg,
-        });
+        result.errors.push({ orderId, message: msg });
       }
     }
 
@@ -429,58 +280,82 @@ export class ProductionService {
     });
   }
 
-  async getOperations(stageCode: ProductionStageCode) {
-    // Stage kodu SAP tarafında ne ise onu kullan:
-    // AKUPLE, Akuple, AKUPLE1 vs.
+  async getOperations(stageCode: string) {
+    const normalizedStageCode = (stageCode || '').trim().toUpperCase();
 
     const operations = await this.prisma.productionOperation.findMany({
       where: {
-        stageCode,
-        status: {
-          in: ['waiting', 'in_progress'],
-        },
-      }, // 🔥 burada filtreyi stageCode ile yapıyoruz
+        stageCode: normalizedStageCode,
+        status: { in: ['waiting', 'in_progress'] },
+        order: { status: { in: ['planned', 'in_progress'] } },
+      },
       include: {
         order: true,
-        items: true,
+        items: { orderBy: { lineNo: 'asc' } },
       },
-      orderBy: [{ order: { sapDocNum: 'asc' } }, { id: 'asc' }],
+      orderBy: [{ orderId: 'asc' }, { id: 'asc' }],
     });
-    return operations.map((op) => ({
-      id: op.id,
-      stageCode: op.stageCode,
-      stageName: op.stageName,
-      status: op.status,
-      sequenceNo: op.sequenceNo,
-      departmentCode: op.departmentCode,
-      startedAt: op.startedAt,
-      finishedAt: op.finishedAt,
 
-      order: {
-        id: op.order.id,
-        sapDocNum: op.order.sapDocNum,
-        itemCode: op.order.itemCode,
-        itemName: op.order.itemName,
-        quantity: op.order.quantity,
-      },
+    // 🔥 docEntry listesi
+    const docEntries = Array.from(
+      new Set(operations.map((op) => op.order?.sapDocEntry)),
+    ).filter((x): x is number => typeof x === 'number' && !Number.isNaN(x));
 
-      items: op.items.map((it) => ({
-        id: it.id,
-        itemCode: it.itemCode,
-        itemName: it.itemName,
-        quantity: it.quantity,
-        uomName: it.uomName,
-        warehouseCode: it.warehouseCode,
-        issueMethod: it.issueMethod,
-        lineNo: it.lineNo,
-        selectedItemCode: it.selectedItemCode,
-        selectedItemName: it.selectedItemName,
-        selectedWarehouseCode: it.selectedWarehouseCode,
-        selectedQuantity: it.selectedQuantity,
-        isAlternative: it.isAlternative,
-        sapIssueDocEntry: it.sapIssueDocEntry,
-      })),
-    }));
+    // 🔥 OpenSalesOrder’dan serialNo çek
+    const openOrders = docEntries.length
+      ? await this.prisma.openSalesOrder.findMany({
+          where: { docEntry: { in: docEntries } },
+          select: { docEntry: true, serialNo: true },
+        })
+      : [];
+
+    const serialMap = new Map<number, string | null>();
+    for (const o of openOrders) serialMap.set(o.docEntry, o.serialNo ?? null);
+
+    return operations.map((op) => {
+      const serialNo =
+        typeof op.order?.sapDocEntry === 'number'
+          ? (serialMap.get(op.order.sapDocEntry) ?? null)
+          : null;
+
+      return {
+        id: op.id,
+        stageCode: op.stageCode,
+        stageName: op.stageName,
+        status: op.status,
+        sequenceNo: op.sequenceNo,
+        departmentCode: op.departmentCode,
+        startedAt: op.startedAt,
+        finishedAt: op.finishedAt,
+
+        order: {
+          id: op.order.id,
+          sapDocEntry: op.order.sapDocEntry,
+          sapDocNum: op.order.sapDocNum,
+          itemCode: op.order.itemCode,
+          itemName: op.order.itemName,
+          quantity: op.order.quantity,
+          serialNo, // ✅ buradan geliyor
+        },
+
+        items: (op.items || []).map((it) => ({
+          id: it.id,
+          itemCode: it.itemCode,
+          itemName: it.itemName,
+          quantity: it.quantity,
+          uomName: it.uomName,
+          warehouseCode: it.warehouseCode,
+          issueMethod: it.issueMethod,
+          lineNo: it.lineNo,
+          selectedItemCode: it.selectedItemCode,
+          selectedItemName: it.selectedItemName,
+          selectedWarehouseCode: it.selectedWarehouseCode,
+          selectedQuantity: it.selectedQuantity,
+          isAlternative: it.isAlternative,
+          sapIssueDocEntry: it.sapIssueDocEntry,
+        })),
+      };
+    });
   }
 
   async getOperationDetail(operationId: number) {
@@ -872,39 +747,82 @@ export class ProductionService {
 
     return updated;
   }
+  private stableStringify(obj: any) {
+    return JSON.stringify(obj);
+  }
 
-  /**
-   * SAP B1 Service Layer üzerinden malzeme çıkışı (Goods Issue)
-   * burayı senin mevcut SAP wrapper'ına göre implemente edeceğiz.
-   */
-  private async createSapGoodsIssue(payload: {
-    itemCode: string;
-    warehouseCode?: string | null;
-    quantity: number;
-    uomName?: string | null;
-  }) {
-    // Service Layer'da genelde:
-    // POST /b1s/v1/InventoryGenExits
-    // {
-    //   "DocumentLines": [
-    //     { "ItemCode": "...", "WarehouseCode": "...", "Quantity": 1 }
-    //   ]
-    // }
+  private sha1(str: string) {
+    return crypto.createHash('sha1').update(str).digest('hex');
+  }
 
-    const doc = {
-      DocumentLines: [
-        {
-          ItemCode: payload.itemCode,
-          WarehouseCode: payload.warehouseCode,
-          Quantity: payload.quantity,
-        },
-      ],
+  private async getProductionStructureCached(itemCode: string) {
+    // 1) PSQL cache'e bak
+    const cached = await this.prisma.productionStructureCache.findUnique({
+      where: { itemCode },
+    });
+
+    if (cached?.data) {
+      return cached.data as any; // { itemCode, stages }
+    }
+
+    // 2) Yoksa SAP'ten üret (Senin SapService'te zaten var)
+    const structure = await this.sap.buildProductionStructureFromSap(itemCode);
+
+    // 3) Hash
+    const hash = this.sha1(this.stableStringify(structure));
+
+    // 4) Cache'e yaz
+    await this.prisma.productionStructureCache.upsert({
+      where: { itemCode },
+      create: { itemCode, data: structure, dataHash: hash },
+      update: { data: structure, dataHash: hash },
+    });
+
+    return structure;
+  }
+
+  async getNextProductionSerial(): Promise<string> {
+    const setting = await this.prisma.setting.findUnique({
+      where: { name: 'productionSerial' },
+    });
+
+    if (!setting) {
+      throw new Error('productionSerial setting not found');
+    }
+
+    const { pad, next, prefix } = setting.settings as {
+      pad: number;
+      next: number;
+      prefix: string;
     };
 
-    // SapService içinde bir post metodu olduğunu varsayıyorum
-    const res: any = await this.sap.post('/b1s/v1/InventoryGenExits', doc);
+    // 1️⃣ ProductionOrder içinden max serial bul
+    const lastOrder = await this.prisma.productionOrder.findFirst({
+      where: {
+        serialNo: {
+          not: '',
+        },
+      },
+      orderBy: {
+        serialNo: 'desc',
+      },
+      select: {
+        serialNo: true,
+      },
+    });
 
-    // res.DocEntry gibi bir alan döner
-    return res.DocEntry || null;
+    let serialNumber: number;
+
+    if (!lastOrder) {
+      // İlk üretim
+      serialNumber = next;
+    } else {
+      // GJ10050045 → 10050045
+      serialNumber = Number(lastOrder.serialNo.replace(prefix, '')) + 1;
+    }
+
+    const serialNo = prefix + serialNumber.toString().padStart(pad, '0');
+
+    return serialNo;
   }
 }
