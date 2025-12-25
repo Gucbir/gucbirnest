@@ -1,7 +1,64 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SapService } from '../sap/sap.service';
 import crypto from 'crypto';
+import { MaterialCheckService } from 'src/material-check/material-check.service';
+import { ProcurementService } from 'src/procurement/procurement.service';
+import { MaterialCheckModule } from '../material-check/material-check.module';
+const STAGE_MAP: Record<
+  string,
+  {
+    stageCode: string;
+    stageName: string;
+    sequenceNo: number;
+    departmentCode: string;
+  }
+> = {
+  // örnek StageId değerlerini kendi SAP routing’inle eşle
+  // StageId numeric geliyorsa key'i String(StageId) yapacağız
+  '1': {
+    stageCode: 'AKUPLE',
+    stageName: 'AKUPLE MONTAJ',
+    sequenceNo: 10,
+    departmentCode: 'AKUPLE',
+  },
+  '2': {
+    stageCode: 'MOTOR_MONTAJ',
+    stageName: 'MOTOR MONTAJ',
+    sequenceNo: 20,
+    departmentCode: 'MOTOR',
+  },
+  '3': {
+    stageCode: 'PANO_TESISAT',
+    stageName: 'PANO TESİSAT',
+    sequenceNo: 30,
+    departmentCode: 'TESISAT',
+  },
+  '4': {
+    stageCode: 'TEST',
+    stageName: 'TEST',
+    sequenceNo: 40,
+    departmentCode: 'TEST',
+  },
+  '5': {
+    stageCode: 'KABIN_GIYDIRME',
+    stageName: 'KABİN GİYDİRME',
+    sequenceNo: 50,
+    departmentCode: 'KABIN',
+  },
+};
+
+const DEFAULT_STAGE = {
+  stageCode: 'GENEL',
+  stageName: 'GENEL',
+  sequenceNo: 999,
+  departmentCode: 'GENEL',
+};
 
 @Injectable()
 export class ProductionService {
@@ -10,7 +67,228 @@ export class ProductionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sap: SapService,
+    private readonly materialCheck: MaterialCheckService,
+    private readonly procurement: ProcurementService,
   ) {}
+
+  async importFromOrderLine(dto: any) {
+    // 0) normalize + validate
+    const docEntry = Number(dto?.docEntry ?? dto?.orderId); // eski payload varsa diye
+    const lineNum = Number(dto?.lineNum);
+    const itemCode = String(dto?.itemCode ?? '').trim();
+    const quantity = Number(dto?.quantity);
+    const whsCode = String(dto?.whsCode ?? '01').trim();
+
+    if (!docEntry || isNaN(docEntry))
+      throw new BadRequestException('docEntry zorunlu');
+    if (isNaN(lineNum)) throw new BadRequestException('lineNum zorunlu');
+    if (!itemCode) throw new BadRequestException('itemCode zorunlu');
+    if (!quantity || quantity <= 0)
+      throw new BadRequestException('quantity 0 olamaz');
+
+    this.logger.log(
+      `[importFromOrderLine] docEntry=${docEntry} lineNum=${lineNum} itemCode=${itemCode} qty=${quantity} whs=${whsCode}`,
+    );
+
+    // 1) material check (BOM + PSQL stok)
+    const check = await this.materialCheck.checkOrderLineMaterial({
+      parentItemCode: itemCode,
+      requestedQty: quantity,
+      fallbackWhsCode: whsCode,
+    });
+
+    // 2) eksik varsa: shortage run oluştur + 409 dön
+    if (!check.ok) {
+      const run = await this.procurement.createMaterialShortageRun({
+        dto: { docEntry, lineNum, itemCode, quantity, whsCode },
+        shortages: check.shortages,
+      });
+
+      throw new ConflictException({
+        ok: false,
+        code: 'MISSING_MATERIAL',
+        reason: 'MATERIAL_SHORTAGE',
+        message: 'Eksik malzeme var. Üretime aktarma durduruldu.',
+        runId: run.id,
+        shortages: check.shortages,
+      });
+    }
+
+    // 3) tamam → üretime aktar
+    const prod = await this.createProductionOrder({
+      docEntry,
+      lineNum,
+      itemCode,
+      quantity,
+      whsCode,
+    });
+
+    return { ok: true, productionOrderId: prod?.id };
+  }
+
+  async allocateNextProductionSerial() {
+    // sende Setting.productionSerial var demiştin
+    // burada placeholder:
+    const prefix = 'GJ';
+    const pad = 8;
+    const next = Date.now(); // geçici. sen Setting'den yapacaksın
+    return `${prefix}${String(next).padStart(pad, '0')}`;
+  }
+
+  async createProductionOrder(dto: any, bomLines?: any[]) {
+    const sapDocEntry = dto?.docEntry != null ? Number(dto.docEntry) : null;
+    const sapDocNum = dto?.docNum != null ? Number(dto.docNum) : null;
+
+    const itemCode = String(dto?.itemCode ?? '').trim();
+    const quantity = Number(dto?.quantity);
+
+    if (!itemCode) throw new BadRequestException('itemCode zorunlu');
+    if (!quantity || quantity <= 0)
+      throw new BadRequestException('quantity 0 olamaz');
+
+    // itemName yoksa BOM’dan ya da SAP’den bul (şimdilik dto’dan bekleyebiliriz)
+    const itemName =
+      String(dto?.itemName ?? dto?.ItemName ?? '').trim() || itemCode;
+
+    // serialNo: sende zorunlu alan. Yoksa üret.
+    const serialNo =
+      String(dto?.serialNo ?? '').trim() ||
+      (await this.allocateNextProductionSerial());
+
+    this.logger.log(
+      `[createProductionOrder] item=${itemCode} qty=${quantity} sapDocEntry=${sapDocEntry} sapDocNum=${sapDocNum} serialNo=${serialNo}`,
+    );
+
+    // 0) Aynı sapDocEntry+itemCode daha önce üretime aktarılmış mı?
+    // NOT: modelinde unique yok. Şimdilik "findFirst" ile idempotent davranıyoruz.
+    const existing = await this.prisma.productionOrder.findFirst({
+      where: {
+        // sapDocEntry varsa onu baz al; yoksa sapDocNum
+        ...(sapDocEntry ? { sapDocEntry } : {}),
+        ...(sapDocNum && !sapDocEntry ? { sapDocNum } : {}),
+        itemCode,
+        status: { not: 'cancelled' },
+      },
+      include: { operations: true },
+    });
+
+    const order = existing
+      ? await this.prisma.productionOrder.update({
+          where: { id: existing.id },
+          data: {
+            sapDocEntry,
+            sapDocNum,
+            itemCode,
+            itemName,
+            quantity,
+            serialNo, // daha önce vardıysa overwrite etmek istemezsen koşullu yaparız
+            status: 'planned',
+          },
+        })
+      : await this.prisma.productionOrder.create({
+          data: {
+            sapDocEntry,
+            sapDocNum,
+            itemCode,
+            itemName,
+            quantity,
+            serialNo,
+            status: 'planned',
+          },
+        });
+
+    // 1) BOM yoksa operasyona geçmeyelim
+    const lines = Array.isArray(bomLines) ? bomLines : [];
+    if (!lines.length) {
+      this.logger.warn(
+        `[createProductionOrder] BOM boş geldi. operations yaratılmadı.`,
+      );
+      return order;
+    }
+
+    // 2) BOM’u stage’e göre grupla
+    // bom satırı örnek alanlar: ItemCode, ItemName, Quantity, UomName, WhsCode, IssueMethod, VisOrder, StageId
+    const groupMap = new Map<string, any[]>();
+
+    for (const l of lines) {
+      const stageId = String(l.StageId ?? l.StageID ?? '').trim() || 'GENEL';
+      const key = stageId;
+      const arr = groupMap.get(key) ?? [];
+      arr.push(l);
+      groupMap.set(key, arr);
+    }
+
+    // 3) Her stage grubu için ProductionOperation oluştur/upsert
+    for (const [stageId, stageLines] of groupMap.entries()) {
+      const meta = STAGE_MAP[stageId] ?? DEFAULT_STAGE;
+
+      // aynı orderId + stageCode için tek operasyon varsayımı
+      const opExisting = await this.prisma.productionOperation.findFirst({
+        where: { orderId: order.id, stageCode: meta.stageCode },
+        select: { id: true },
+      });
+
+      const operation = opExisting
+        ? await this.prisma.productionOperation.update({
+            where: { id: opExisting.id },
+            data: {
+              stageCode: meta.stageCode,
+              stageName: meta.stageName,
+              sequenceNo: meta.sequenceNo,
+              departmentCode: meta.departmentCode,
+              status: 'waiting',
+            },
+          })
+        : await this.prisma.productionOperation.create({
+            data: {
+              orderId: order.id,
+              stageCode: meta.stageCode,
+              stageName: meta.stageName,
+              sequenceNo: meta.sequenceNo,
+              departmentCode: meta.departmentCode,
+              status: 'waiting',
+            },
+          });
+
+      // 4) Bu operasyonun item’larını idempotent yaz: önce sil, sonra createMany
+      await this.prisma.productionOperationItem.deleteMany({
+        where: { operationId: operation.id },
+      });
+
+      const itemsData = stageLines
+        .sort((a, b) => Number(a.VisOrder ?? 0) - Number(b.VisOrder ?? 0))
+        .map((l, idx) => {
+          const bomItemCode = String(l.ItemCode ?? '').trim();
+          const bomItemName = String(l.ItemName ?? '').trim() || bomItemCode;
+
+          const perUnit = Number(l.Quantity ?? 0);
+          const requiredQty = quantity * perUnit;
+
+          return {
+            operationId: operation.id,
+            itemCode: bomItemCode,
+            itemName: bomItemName,
+            quantity: requiredQty,
+            uomName: l.UomName ? String(l.UomName) : null,
+            warehouseCode: l.WhsCode ? String(l.WhsCode) : null,
+            issueMethod: l.IssueMethod ? String(l.IssueMethod) : null,
+            lineNo: l.VisOrder != null ? Number(l.VisOrder) : idx,
+          };
+        });
+
+      if (itemsData.length) {
+        await this.prisma.productionOperationItem.createMany({
+          data: itemsData,
+        });
+      }
+
+      this.logger.log(
+        `[createProductionOrder] op=${meta.stageCode} items=${itemsData.length} (stageId=${stageId})`,
+      );
+    }
+
+    return order;
+  }
 
   async importOrderFromSap(docNum: number) {
     this.logger.log(`[ProductionService] Import order ${docNum} from SAP`);

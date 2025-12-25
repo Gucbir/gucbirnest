@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
-import { ProductionController } from './production.controller';
 import { ProductionService } from './production.service';
-import { PrismaService } from '../prisma/prisma.service';
-import { SapService } from '../sap/sap.service';
+import { ProductionController } from './production.controller';
+import { MaterialCheckModule } from '../material-check/material-check.module';
+import { ProcurementModule } from '../procurement/procurement.module';
+import { SapModule } from '../sap/sap.module'; // ✅
 
 @Module({
+  imports: [SapModule, MaterialCheckModule, ProcurementModule],
   controllers: [ProductionController],
-  providers: [ProductionService, PrismaService, SapService],
-  exports: [ProductionService],
+  providers: [ProductionService],
 })
-export class ProductionModule {}
+export class ProductionModule {} // 🔥 BU SATIR ŞART

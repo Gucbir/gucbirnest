@@ -510,44 +510,43 @@ export class SapService {
     return map;
   }
 
-  // async getOpenSalesOrders() {
-  //   const result: any[] = [];
-  //   let skip = 0;
-  //   const top = 200;
+  async getOpenSalesOrders() {
+    const result: any[] = [];
+    let skip = 0;
+    const top = 200;
 
-  //   while (true) {
-  //     const res = await this.get('Orders', {
-  //       params: {
-  //         $select:
-  //           'DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal,DocTotalFC,DocCurrency,Comments,DocStatus,CANCELED',
-  //         $filter: "DocStatus eq 'O' and CANCELED eq 'N'",
-  //         $top: top,
-  //         $skip: skip,
-  //       },
-  //     });
+    while (true) {
+      const res = await this.get('Orders', {
+        params: {
+          $select:
+            'DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal,DocTotalFc,DocCurrency,Comments,DocumentStatus,Cancelled',
+          $filter: "DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'",
+          $orderby: 'DocEntry asc',
+          $top: top,
+          $skip: skip,
+        },
+      });
 
-  //     const rows = res?.value ?? [];
-  //     if (rows.length === 0) break;
+      const rows = res?.value ?? [];
+      if (rows.length === 0) break;
 
-  //     result.push(...rows);
-  //     skip += top;
-  //   }
+      result.push(...rows);
+      skip += top;
+    }
 
-  //   return result;
-  // }
+    return result;
+  }
 
   // sap.service.ts
   async getOpenSalesOrdersWithLines(top = 50, skip = 0) {
     return this.get('Orders', {
       params: {
         $select:
-          'DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal,DocTotalFc,DocCurrency,Comments,DocumentStatus,Cancelled',
+          'DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal,DocTotalFc,DocCurrency,Comments,DocumentStatus,Cancelled,DocumentLines',
         $filter: "DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'",
         $orderby: 'DocEntry asc',
         $top: top,
         $skip: skip,
-        $expand:
-          'DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,Price,Currency,Rate,WarehouseCode,LineTotal,RowTotalFC,RowTotalSC,LineStatus,ShipDate)',
       },
     });
   }

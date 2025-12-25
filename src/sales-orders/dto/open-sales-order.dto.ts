@@ -7,10 +7,10 @@ export interface OpenSalesOrderSlRow {
   CardCode: string;
   CardName: string;
   DocTotal: number;
-  DocTotalFC: number;
+  DocTotalFc: number;
   DocCur: string;
-  CANCELED: string;
-  DocStatus: string;
+  Cancelled: string;
+  DocumentStatus: string;
 }
 
 export interface SqlQueryResponse<T> {

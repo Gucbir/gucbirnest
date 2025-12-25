@@ -12,62 +12,135 @@ export class OpenSalesOrderSyncService {
   ) {}
 
   async syncOpenSalesOrders() {
-    this.logger.log('SAP → Açık satış siparişleri çekiliyor...');
-
-    const orders = await this.sap.getOpenSalesOrders();
+    this.logger.log('🚀 SAP → Açık siparişler (header+lines) çekiliyor...');
+    const orders = await this.sap.getAllOpenSalesOrdersWithLines(50);
 
     let created = 0;
     let updated = 0;
+    let linesUpserted = 0;
+    let linesDeleted = 0;
 
     for (const o of orders) {
-      const exists = await this.prisma.openSalesOrder.findUnique({
-        where: { docEntry: o.DocEntry },
+      const docEntry = Number(o.DocEntry);
+      if (!docEntry || Number.isNaN(docEntry)) continue;
+
+      // 1) Header upsert
+      const existing = await this.prisma.openSalesOrder.findUnique({
+        where: { docEntry },
+        select: { id: true },
       });
 
-      if (exists) {
-        await this.prisma.openSalesOrder.update({
-          where: { docEntry: o.DocEntry },
-          data: {
-            docNum: o.DocNum ?? null,
-            cardCode: o.CardCode ?? null,
-            cardName: o.CardName ?? null,
-            docDate: o.DocDate ? new Date(o.DocDate) : null,
-            docDueDate: o.DocDueDate ? new Date(o.DocDueDate) : null,
-            docTotal: o.DocTotal ?? null,
-            docTotalFc: o.DocTotalFc ?? null,
-            docCurrency: o.DocCurrency ?? null,
-            comments: o.Comments ?? null,
-            documentStatus: o.DocStatus ?? null,
-            cancelled: o.CANCELED ?? null,
+      const headerData = {
+        docNum: o.DocNum ?? null,
+        cardCode: o.CardCode ?? null,
+        cardName: o.CardName ?? null,
+        docDate: o.DocDate ? new Date(o.DocDate) : null,
+        docDueDate: o.DocDueDate ? new Date(o.DocDueDate) : null,
+        docTotal: o.DocTotal ?? null,
+        docTotalFc: o.DocTotalFc ?? null,
+        docCurrency: o.DocCurrency ?? null,
+        comments: o.Comments ?? null,
+        documentStatus: o.DocumentStatus ?? null,
+        cancelled: o.Cancelled ?? null,
+        // serialNo'ya dokunmuyoruz
+      };
+
+      const saved = await this.prisma.openSalesOrder.upsert({
+        where: { docEntry },
+        create: {
+          docEntry,
+          ...headerData,
+          serialNo: null,
+        },
+        update: headerData,
+        select: { id: true },
+      });
+
+      if (existing) updated++;
+      else created++;
+
+      // 2) Lines upsert
+      const lines = o.DocumentLines ?? [];
+      const seenLineNums: number[] = [];
+
+      for (const ln of lines) {
+        const lineNum = Number(ln.LineNum);
+        if (Number.isNaN(lineNum)) continue;
+
+        seenLineNums.push(lineNum);
+
+        await this.prisma.openSalesOrderLine.upsert({
+          where: {
+            orderId_lineNum: {
+              orderId: saved.id,
+              lineNum,
+            },
+          },
+          create: {
+            orderId: saved.id,
+            docEntry,
+            lineNum,
+
+            itemCode: ln.ItemCode ?? null,
+            itemDescription: ln.ItemDescription ?? null,
+
+            quantity: ln.Quantity ?? null,
+            unitPrice: ln.Price ?? null,
+            currency: ln.Currency ?? null,
+            rate: ln.Rate ?? null,
+
+            warehouseCode: ln.WarehouseCode ?? null,
+
+            lineTotal: ln.LineTotal ?? null,
+            rowTotalFC: ln.RowTotalFC ?? null,
+            rowTotalSC: ln.RowTotalSC ?? null,
+
+            lineStatus: ln.LineStatus ?? null,
+            shipDate: ln.ShipDate ? new Date(ln.ShipDate) : null,
+          },
+          update: {
+            itemCode: ln.ItemCode ?? null,
+            itemDescription: ln.ItemDescription ?? null,
+
+            quantity: ln.Quantity ?? null,
+            unitPrice: ln.Price ?? null,
+            currency: ln.Currency ?? null,
+            rate: ln.Rate ?? null,
+
+            warehouseCode: ln.WarehouseCode ?? null,
+
+            lineTotal: ln.LineTotal ?? null,
+            rowTotalFC: ln.RowTotalFC ?? null,
+            rowTotalSC: ln.RowTotalSC ?? null,
+
+            lineStatus: ln.LineStatus ?? null,
+            shipDate: ln.ShipDate ? new Date(ln.ShipDate) : null,
+            docEntry,
           },
         });
-        updated++;
-      } else {
-        await this.prisma.openSalesOrder.create({
-          data: {
-            docEntry: o.DocEntry,
-            docNum: o.DocNum ?? null,
-            cardCode: o.CardCode ?? null,
-            cardName: o.CardName ?? null,
-            docDate: o.DocDate ? new Date(o.DocDate) : null,
-            docDueDate: o.DocDueDate ? new Date(o.DocDueDate) : null,
-            docTotal: o.DocTotal ?? null,
-            docTotalFc: o.DocTotalFC ?? null,
-            docCurrency: o.DocCurrency ?? null,
-            comments: o.Comments ?? null,
-            documentStatus: o.DocStatus ?? null,
-            cancelled: o.CANCELED ?? null,
-            serialNo: null,
-          },
-        });
-        created++;
+
+        linesUpserted++;
       }
+
+      // 3) (Opsiyon ama sağlam) SAP’te artık olmayan satırları DB’den sil
+      const del = await this.prisma.openSalesOrderLine.deleteMany({
+        where: {
+          orderId: saved.id,
+          lineNum: { notIn: seenLineNums.length ? seenLineNums : [-1] },
+        },
+      });
+      linesDeleted += del.count;
     }
 
-    return {
+    const result = {
       fetched: orders.length,
       created,
       updated,
+      linesUpserted,
+      linesDeleted,
     };
+
+    this.logger.log(`✔️ Sync bitti: ${JSON.stringify(result)}`);
+    return result;
   }
 }
