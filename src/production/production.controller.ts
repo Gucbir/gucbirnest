@@ -8,6 +8,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ProductionService } from './production.service';
+import { ImportFromOrderLineDto } from './dto/import-from-order-line.dto';
 
 // @UseGuards(JwtAuthGuard)
 @Controller('production')
@@ -86,5 +87,10 @@ export class ProductionController {
   @Get('akuple')
   async getAkupleOperations() {
     return this.productionService.getOperations('AKUPLE');
+  }
+
+  @Post('import-from-order-line')
+  async importFromOrderLine(@Body() dto: ImportFromOrderLineDto) {
+    return this.productionService.importFromOrderLine(dto);
   }
 }

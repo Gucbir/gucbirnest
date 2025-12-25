@@ -12,7 +12,7 @@ model User {
   fullName       String
   email          String?    
   vkn            String   @unique
-  phone          String
+  phone          String?
   
   passwordHash   String
   role           String   @default("User")
@@ -283,4 +283,55 @@ model ProductionStructureCache {
   @@index([itemCode])
 }
 
+
+model MaterialShortageRun {
+  id        Int  @id @default(autoincrement())
+  payload   Json
+  shortages Json
+  createdAt DateTime @default(now())
+}
+
+model PurchaseRequest {
+  id              Int      @id @default(autoincrement())
+  source          String   @default("MATERIAL_SHORTAGE") // ileride başka kaynaklar da olur
+  materialRunId   Int?     // MaterialShortageRun.id referansı (opsiyonel)
+  docEntry        Int?
+  sapDocNum       Int?
+  parentItemCode  String?
+  requestedQty    Float?
+  whsCode         String?
+
+  status          String   @default("draft") // draft | sent | closed
+  note            String?
+  createdAt       DateTime @default(now())
+
+  items           PurchaseRequestItem[]
+  @@index([materialRunId])
+  @@index([status])
+}
+
+model PurchaseRequestItem {
+  id                Int    @id @default(autoincrement())
+  requestId         Int
+  request           PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  itemCode          String
+  itemName          String?
+  whsCode           String?
+  required          Float
+  inStock           Float
+  missing           Float
+
+  // istersek alternatif: “satın alınacak miktar”
+  purchaseQty       Float
+
+  // child/alt eksiklerden geldiyse bağlamak için:
+  parentItemCode    String?
+  parentItemName String?
+ 
+  createdAt         DateTime @default(now())
+
+  @@index([itemCode])
+  @@index([requestId])
+}
 

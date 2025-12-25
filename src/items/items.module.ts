@@ -15,6 +15,6 @@ import { ItemsController } from './items.controller';
     PrismaService,
     SapService,
   ],
-  exports: [ItemsSyncService, OpenSalesOrderSyncService],
+  exports: [ItemsSyncService, ItemsService, OpenSalesOrderSyncService],
 })
 export class ItemsModule {}
