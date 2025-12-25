@@ -3,11 +3,15 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import * as dotenv from 'dotenv';
+import { ApiLogService } from './api-log/api-log.service';
+import { ApiLogInterceptor } from './api-log/api-log.interceptor';
 
 dotenv.config();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const apiLogService = app.get(ApiLogService);
+  app.useGlobalInterceptors(new ApiLogInterceptor(apiLogService));
 
   app.useGlobalPipes(
     new ValidationPipe({

@@ -20,6 +20,7 @@ import { ProductionModule } from './production/production.module';
 import { SettingsService } from './settings/settings.service';
 import { FormsService } from './forms/forms.service';
 import { OpenSalesOrderSyncModule } from './items-sync/open-sales-order-sync.module';
+import { ApiLogModule } from './api-log/api-log.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -39,7 +40,7 @@ import { OpenSalesOrderSyncModule } from './items-sync/open-sales-order-sync.mod
     SapUsersModule,
     ProductionModule,
     OpenSalesOrderSyncModule,
-
+    ApiLogModule,
     // ileride: OrdersModule, StockModule, SalesModule, ...
   ],
   controllers: [AuthController],
