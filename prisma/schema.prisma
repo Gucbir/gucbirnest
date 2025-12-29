@@ -8,12 +8,12 @@ generator client {
 }
 
 model User {
-  id             Int      @id @default(autoincrement())
-  fullName       String
-  email          String?    
-  vkn            String   @unique
-  phone          String?
-  
+  id       Int     @id @default(autoincrement())
+  fullName String
+  email    String?
+  vkn      String  @unique
+  phone    String?
+
   passwordHash   String
   role           String   @default("User")
   isActive       Boolean  @default(true)
@@ -121,14 +121,14 @@ model Log {
 }
 
 model ProductionOrder {
-  id          Int    @id @default(autoincrement())
+  id          Int                   @id @default(autoincrement())
   sapDocEntry Int? // SAP DocEntry
   sapDocNum   Int? // SAP DocNum
   itemCode    String
   itemName    String
-  quantity    Float
-  status      String @default("planned") // planned | in_progress | done | cancelled
-  serialNo      String
+  quantity    Int                   @default(1)
+  status      String                @default("planned") // planned | in_progress | done | cancelled
+  units       ProductionOrderUnit[]
 
   // Bir üretim siparişinin tüm operasyonları
   operations ProductionOperation[]
@@ -146,10 +146,12 @@ model ProductionOperation {
   finishedAt     DateTime?
 
   // İLİŞKİLER
-  order ProductionOrder @relation(fields: [orderId], references: [id])
+  order          ProductionOrder           @relation(fields: [orderId], references: [id])
+  operationUnits ProductionOperationUnit[]
 
   // 🔥 TEK ilişki: bu operasyonun kalemleri
-  items ProductionOperationItem[]
+  items                                 ProductionOperationItem[]
+  productionOperationUnitItemSelections ProductionOperationUnitItemSelection[]
 }
 
 model ProductionOperationItem {
@@ -175,7 +177,8 @@ model ProductionOperationItem {
   sapIssueDocEntry Int?
 
   // İLİŞKİ
-  operation ProductionOperation @relation(fields: [operationId], references: [id])
+  unitSelections ProductionOperationUnitItemSelection[]
+  operation      ProductionOperation                    @relation(fields: [operationId], references: [id])
 }
 
 model Setting {
@@ -187,77 +190,76 @@ model Setting {
 }
 
 model Form {
-id Int @id @default(autoincrement())
-name String @unique
-values Json
-orderNo   Int 
+  id      Int    @id @default(autoincrement())
+  name    String @unique
+  values  Json
+  orderNo Int
 
-createdAt DateTime @default(now())
-updatedAt   DateTime   @updatedAt
-
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model OpenSalesOrder {
-  id            Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   // SAP anahtar
-  docEntry      Int      @unique
-  docNum        Int?
+  docEntry Int  @unique
+  docNum   Int?
 
-  cardCode      String?
-  cardName      String?
+  cardCode String?
+  cardName String?
 
-  docDate       DateTime?
-  docDueDate    DateTime?
+  docDate    DateTime?
+  docDueDate DateTime?
 
-  docTotal      Float?
-  docTotalFc    Float?
-  docCurrency   String?
+  docTotal    Float?
+  docTotalFc  Float?
+  docCurrency String?
 
-  comments      String?
+  comments String?
 
   documentStatus String? // bost_Open / bost_Close
   cancelled      String? // tNO / tYES
 
   // Bizim atayacağımız kimlik
-  serialNo      String?  @unique
+  serialNo String? @unique
 
   // Sync bilgisi
-  syncedAt      DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  syncedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  lines          OpenSalesOrderLine[]
+  lines OpenSalesOrderLine[]
 }
 
 model OpenSalesOrderLine {
-  id        Int  @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   // FK
-  orderId   Int
-  order     OpenSalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId Int
+  order   OpenSalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   // SAP line identity
-  lineNum   Int           // DocumentLines.LineNum
-  docEntry  Int           // kolay sorgu için (redundant ama faydalı)
+  lineNum  Int // DocumentLines.LineNum
+  docEntry Int // kolay sorgu için (redundant ama faydalı)
 
   // temel ürün bilgisi
   itemCode        String?
   itemDescription String?
 
-  quantity        Float?
-  unitPrice       Float?
-  currency        String?
-  rate            Float?
+  quantity  Float?
+  unitPrice Float?
+  currency  String?
+  rate      Float?
 
-  warehouseCode   String?
+  warehouseCode String?
 
-  lineTotal       Float?
-  rowTotalFC      Float?
-  rowTotalSC      Float?
+  lineTotal  Float?
+  rowTotalFC Float?
+  rowTotalSC Float?
 
-  lineStatus      String? // bost_Open / bost_Close (satır durumu)
+  lineStatus String? // bost_Open / bost_Close (satır durumu)
 
-  shipDate        DateTime?
+  shipDate DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -267,71 +269,157 @@ model OpenSalesOrderLine {
   @@index([itemCode])
 }
 
-
 model ProductionStructureCache {
-  id          Int      @id @default(autoincrement())
-  itemCode    String   @unique
+  id       Int    @id @default(autoincrement())
+  itemCode String @unique
 
   // Snapshot data (senin return ettiğin yapı)
-  data        Json
+  data Json
 
   // Versiyon / invalidation için alanlar
-  dataHash    String?  // JSON hash (değişti mi anlamak için)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  dataHash  String? // JSON hash (değişti mi anlamak için)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([itemCode])
 }
 
-
 model MaterialShortageRun {
-  id        Int  @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   payload   Json
   shortages Json
   createdAt DateTime @default(now())
 }
 
 model PurchaseRequest {
-  id              Int      @id @default(autoincrement())
-  source          String   @default("MATERIAL_SHORTAGE") // ileride başka kaynaklar da olur
-  materialRunId   Int?     // MaterialShortageRun.id referansı (opsiyonel)
-  docEntry        Int?
-  sapDocNum       Int?
-  parentItemCode  String?
-  requestedQty    Float?
-  whsCode         String?
+  id             Int     @id @default(autoincrement())
+  source         String  @default("MATERIAL_SHORTAGE") // ileride başka kaynaklar da olur
+  materialRunId  Int? // MaterialShortageRun.id referansı (opsiyonel)
+  docEntry       Int?
+  sapDocNum      Int?
+  parentItemCode String?
+  requestedQty   Float?
+  whsCode        String?
 
-  status          String   @default("draft") // draft | sent | closed
-  note            String?
-  createdAt       DateTime @default(now())
+  status    String   @default("draft") // draft | sent | closed
+  note      String?
+  createdAt DateTime @default(now())
 
-  items           PurchaseRequestItem[]
+  items PurchaseRequestItem[]
+
   @@index([materialRunId])
   @@index([status])
 }
 
 model PurchaseRequestItem {
-  id                Int    @id @default(autoincrement())
-  requestId         Int
-  request           PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  id        Int             @id @default(autoincrement())
+  requestId Int
+  request   PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
-  itemCode          String
-  itemName          String?
-  whsCode           String?
-  required          Float
-  inStock           Float
-  missing           Float
+  itemCode String
+  itemName String?
+  whsCode  String?
+  required Float
+  inStock  Float
+  missing  Float
 
   // istersek alternatif: “satın alınacak miktar”
-  purchaseQty       Float
+  purchaseQty Float
 
   // child/alt eksiklerden geldiyse bağlamak için:
-  parentItemCode    String?
+  parentItemCode String?
   parentItemName String?
- 
-  createdAt         DateTime @default(now())
+
+  createdAt DateTime @default(now())
 
   @@index([itemCode])
   @@index([requestId])
 }
 
+model ProductionOrderUnit {
+  id      Int             @id @default(autoincrement())
+  orderId Int
+  order   ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Her adet için tek seri
+  serialNo String @unique
+
+  // Opsiyonel: bu üniteye ait süreç/çıktılar
+  status    String                    @default("planned") // planned | in_progress | done | scrapped
+  opUnits   ProductionOperationUnit[]
+  createdAt DateTime                  @default(now())
+  updatedAt DateTime                  @updatedAt
+
+  itemSelections ProductionOperationUnitItemSelection[]
+
+  @@index([orderId])
+}
+
+model ProductionOperationUnit {
+  id Int @id @default(autoincrement())
+
+  operationId Int
+  operation   ProductionOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+
+  unitId Int
+  unit   ProductionOrderUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  status     String    @default("waiting") // waiting | in_progress | paused | done
+  startedAt  DateTime?
+  finishedAt DateTime?
+  
+  lastActionByUserId Int?
+  pausedAt       DateTime?
+  pausedTotalSec Int                          @default(0)
+  logs           ProductionOperationUnitLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([operationId, unitId])
+  @@index([operationId])
+  @@index([unitId])
+}
+
+model ProductionOperationUnitLog {
+  id Int @id @default(autoincrement())
+
+  operationUnitId Int
+  operationUnit   ProductionOperationUnit @relation(fields: [operationUnitId], references: [id], onDelete: Cascade)
+  userId Int?   
+
+  action String // start | pause | resume | finish
+  reason String?
+  note   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([operationUnitId])
+}
+
+model ProductionOperationUnitItemSelection {
+  id Int @id @default(autoincrement())
+
+  operationId Int
+  unitId      Int
+  itemId      Int // ProductionOperationItem.id
+
+  // seçilen ürün bilgileri
+  selectedItemCode      String?
+  selectedItemName      String?
+  selectedWarehouseCode String?
+  selectedQuantity      Float?
+  isAlternative         Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ilişkiler
+  operation ProductionOperation     @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  unit      ProductionOrderUnit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  item      ProductionOperationItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([operationId, unitId, itemId])
+  @@index([unitId])
+  @@index([itemId])
+}

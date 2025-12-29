@@ -3,24 +3,35 @@ import {
   Controller,
   Post,
   Param,
+  Req,
   Get,
+  Query,
   Patch,
   BadRequestException,
 } from '@nestjs/common';
 import { ProductionService } from './production.service';
+import { ImportFromOrdersDto } from './dto/import-from-orders.dto';
 import { ImportFromOrderLineDto } from './dto/import-from-order-line.dto';
-
-// @UseGuards(JwtAuthGuard)
+import { CreateProductionOrderDto } from './dto/create-production-order.dto';
+import { PauseOperationDto } from './dto/pause-operation.dto';
+import { ResumeOperationDto } from './dto/resume-operation.dto';
+import { CurrentUser } from '../decorators/current-user.decorator';
 @Controller('production')
 export class ProductionController {
   constructor(private readonly productionService: ProductionService) {}
 
+  // Batch import (varsa)
   @Post('import-from-orders')
-  async importFromOrders(@Body() dto: any) {
+  importFromOrders(@Body() dto: ImportFromOrdersDto) {
     return this.productionService.importFromOrders(dto);
   }
 
-  // Departman kuyruğu (AKUPLE, MOTOR_MONTAJ, TESISAT vs)
+  // Tek satırdan üretime aktar (Akuple test için en kritik)
+  @Post('import-from-order-line')
+  importFromOrderLine(@Body() dto: ImportFromOrderLineDto) {
+    return this.productionService.importFromOrderLine(dto);
+  }
+
   @Get('station/:department/queue')
   async getStationQueue(@Param('department') department: string) {
     return this.productionService.getQueueForDepartment(
@@ -28,13 +39,11 @@ export class ProductionController {
     );
   }
 
-  // Operasyon detay (AKUPLE ekranı için items şart)
   @Get('operations/:id')
   async getOperationDetail(@Param('id') id: string) {
     return this.productionService.getOperationDetail(Number(id));
   }
 
-  // Başla / Bitir (UI post atıyor, bu kalsın)
   @Post('operations/:operationId/start')
   async startOperation(@Param('operationId') operationId: string) {
     return this.productionService.startOperation(Number(operationId));
@@ -45,7 +54,6 @@ export class ProductionController {
     return this.productionService.finishOperation(Number(operationId));
   }
 
-  // Alternatif / orijinal seçimi
   @Patch('operations/:operationId/items/:itemId/select')
   async selectItemForOperationLine(
     @Param('operationId') operationId: string,
@@ -66,31 +74,94 @@ export class ProductionController {
     );
   }
 
-  // ✅ DİNAMİK: stageCode direkt kullan (AKUPLE sabit başlayacak dedin)
-  // UI: /production/operations/stage/akuple
-  @Get('operations/stage/:stageCode')
-  async getOperations(@Param('stageCode') stageCodeParam: string) {
-    const normalized = (stageCodeParam || '').trim().toUpperCase();
+  @Get('operations/stage/:stageCode/units')
+  async getStageOperationsAsUnits(@Param('stageCode') stageCode: string) {
+    return this.productionService.getStageOperationsAsUnits(stageCode);
+  }
 
-    const stage =
-      await this.productionService.resolveStageByCodeOrName(normalized);
-    if (!stage) {
-      throw new BadRequestException(`Geçersiz stageCode: ${stageCodeParam}`);
-    }
+  @Post('orders/:id/backfill-units')
+  async backfillUnits(@Param('id') id: string) {
+    return this.productionService.backfillUnitsForOrder(Number(id));
+  }
 
-    return this.productionService.getOperations(
-      stage.code || stage.departmentCode,
+  // @Post('operations/:id/pause')
+  // async pauseOperation(
+  //   @Param('id') id: string,
+  //   @Body() dto: PauseOperationDto,
+  // ) {
+  //   return this.productionService.pauseOperation(Number(id), dto);
+  // }
+
+  // @Post('operations/:id/resume')
+  // async resumeOperation(
+  //   @Param('id') id: string,
+  //   @Body() dto: ResumeOperationDto,
+  // ) {
+  //   return this.productionService.resumeOperation(Number(id), dto);
+  // }
+
+  @Post('operations/:operationId/units/:unitId/start')
+  startOperationUnit(
+    @Param('operationId') operationId: string,
+    @Param('unitId') unitId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.productionService.startOperationUnit(
+      Number(operationId),
+      Number(unitId),
+      user?.id,
     );
   }
 
-  // Alias kalsın
-  @Get('akuple')
-  async getAkupleOperations() {
-    return this.productionService.getOperations('AKUPLE');
+  @Post('operations/:opId/units/:unitId/pause')
+  pauseUnit(
+    @Param('opId') opId: string,
+    @Param('unitId') unitId: string,
+    @Body() dto: { reason: string; note?: string },
+    @CurrentUser() user: any,
+  ) {
+    return this.productionService.pauseOperationUnit(
+      Number(opId),
+      Number(unitId),
+      dto,
+      user?.id,
+    );
   }
 
-  @Post('import-from-order-line')
-  async importFromOrderLine(@Body() dto: ImportFromOrderLineDto) {
-    return this.productionService.importFromOrderLine(dto);
+  @Post('operations/:opId/units/:unitId/resume')
+  resumeUnit(
+    @Param('opId') opId: string,
+    @Param('unitId') unitId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.productionService.resumeOperationUnit(
+      Number(opId),
+      Number(unitId),
+      user?.id,
+    );
+  }
+
+  @Post('operations/:opId/units/:unitId/finish')
+  finishOperationUnit(
+    @Param('opId') opId: string,
+    @Param('unitId') unitId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.productionService.finishOperationUnit(
+      Number(opId),
+      Number(unitId),
+      user?.id,
+    );
+  }
+
+  @Get('report/units')
+  getProductionReportUnits(
+    @Query('includeFinished') includeFinished?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.productionService.getProductionReportUnits({
+      includeFinished,
+      search,
+    });
   }
 }
