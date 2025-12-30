@@ -79,7 +79,7 @@ export class UsersService {
     });
   }
   /**
-   * Login doğrulama için email+şifre kontrolü
+   * Login doğrulama için vkn+şifre kontrolü
    */
   async validateUser(vkn: string, password: string): Promise<User | null> {
     const user = await this.findByVkn(vkn);

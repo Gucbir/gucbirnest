@@ -58,6 +58,7 @@ export class SapController {
     return depts;
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('warehouses')
   async getWarehouses() {
     const warehouses = await this.sapService.getWarehouses(); // Zaten SapUser[] döndürüyor

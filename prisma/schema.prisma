@@ -116,6 +116,7 @@ model Log {
   path    String
   message String
   userId  Int
+  status  String
 
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())

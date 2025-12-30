@@ -1,13 +1,17 @@
 // src/main.ts
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import * as dotenv from 'dotenv';
-
+import { ApiLogService } from './api-log/api-log.service';
+import { ApiLogInterceptor } from './api-log/api-log.interceptor';
 dotenv.config();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const apiLogService = app.get(ApiLogService);
+  const reflector = app.get(Reflector);
+  app.useGlobalInterceptors(new ApiLogInterceptor(apiLogService, reflector));
 
   app.useGlobalPipes(
     new ValidationPipe({
