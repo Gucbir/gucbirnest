@@ -15,6 +15,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { SettingsService } from '../settings/settings.service';
 import { FormsService } from '../forms/forms.service';
+import { SkipLog } from '../api-log/decorators/skip-log.decorator';
 @Controller('Auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
@@ -26,11 +27,13 @@ export class AuthController {
     private readonly formsService: FormsService,
   ) {}
 
+  @SkipLog()
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
+  @SkipLog()
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
