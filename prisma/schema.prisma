@@ -14,12 +14,13 @@ model User {
   vkn      String  @unique
   phone    String?
 
-  passwordHash   String
-  role           String   @default("User")
-  isActive       Boolean  @default(true)
-  department     String?
-  sapUserId      Int?
-  defaultSapUser SapUser? @relation("DefaultSapUser", fields: [sapUserId], references: [id])
+  passwordHash             String
+  role                     String                    @default("User")
+  isActive                 Boolean                   @default(true)
+  department               String?
+  sapUserId                Int?
+  defaultSapUser           SapUser?                  @relation("DefaultSapUser", fields: [sapUserId], references: [id])
+  lastActionOperationUnits ProductionOperationUnit[] @relation("LastActionByUser")
 
   logs Log[]
 
@@ -146,8 +147,9 @@ model ProductionOperation {
   finishedAt     DateTime?
 
   // İLİŞKİLER
-  order          ProductionOrder           @relation(fields: [orderId], references: [id])
-  operationUnits ProductionOperationUnit[]
+  order           ProductionOrder            @relation(fields: [orderId], references: [id])
+  operationUnits  ProductionOperationUnit[]
+  alternativeLogs ProductionAlternativeLog[]
 
   // 🔥 TEK ilişki: bu operasyonun kalemleri
   items                                 ProductionOperationItem[]
@@ -177,8 +179,9 @@ model ProductionOperationItem {
   sapIssueDocEntry Int?
 
   // İLİŞKİ
-  unitSelections ProductionOperationUnitItemSelection[]
-  operation      ProductionOperation                    @relation(fields: [operationId], references: [id])
+  alternativeLogs ProductionAlternativeLog[]
+  unitSelections  ProductionOperationUnitItemSelection[]
+  operation       ProductionOperation                    @relation(fields: [operationId], references: [id])
 }
 
 model Setting {
@@ -350,7 +353,8 @@ model ProductionOrderUnit {
   createdAt DateTime                  @default(now())
   updatedAt DateTime                  @updatedAt
 
-  itemSelections ProductionOperationUnitItemSelection[]
+  itemSelections  ProductionOperationUnitItemSelection[]
+  alternativeLogs ProductionAlternativeLog[]
 
   @@index([orderId])
 }
@@ -367,8 +371,10 @@ model ProductionOperationUnit {
   status     String    @default("waiting") // waiting | in_progress | paused | done
   startedAt  DateTime?
   finishedAt DateTime?
-  
+
   lastActionByUserId Int?
+  lastActionByUser   User? @relation("LastActionByUser", fields: [lastActionByUserId], references: [id])
+
   pausedAt       DateTime?
   pausedTotalSec Int                          @default(0)
   logs           ProductionOperationUnitLog[]
@@ -386,7 +392,7 @@ model ProductionOperationUnitLog {
 
   operationUnitId Int
   operationUnit   ProductionOperationUnit @relation(fields: [operationUnitId], references: [id], onDelete: Cascade)
-  userId Int?   
+  userId          Int?
 
   action String // start | pause | resume | finish
   reason String?
@@ -422,4 +428,73 @@ model ProductionOperationUnitItemSelection {
   @@unique([operationId, unitId, itemId])
   @@index([unitId])
   @@index([itemId])
+}
+
+model ProductionAlternativeLog {
+  id Int @id @default(autoincrement())
+
+  operationId Int
+  unitId      Int
+  itemId      Int // ProductionOperationItem.id
+
+  // BOM (orijinal)
+  bomItemCode String
+  bomItemName String
+  bomWhsCode  String?
+  bomQty      Float?
+
+  // Seçim (alternatif)
+  selectedItemCode String?
+  selectedItemName String?
+  selectedWhsCode  String?
+  selectedQty      Float?
+  isAlternative    Boolean @default(false)
+
+  // Kim yaptı?
+  userId Int?
+  action String // select | clear | update
+
+  // İleride SAP çıkışına bağlamak istersen
+  sapIssueDocEntry Int?
+
+  note      String?
+  createdAt DateTime @default(now())
+
+  operation ProductionOperation     @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  unit      ProductionOrderUnit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  item      ProductionOperationItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([operationId])
+  @@index([unitId])
+  @@index([itemId])
+}
+
+model AkupleItemTemplate {
+  id             Int     @id @default(autoincrement())
+  parentItemCode String  @unique // ProductionOrder.itemCode (örn: 6.xxxx)
+  parentItemName String?
+  version        Int     @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines AkupleItemTemplateLine[]
+}
+
+model AkupleItemTemplateLine {
+  id         Int @id @default(autoincrement())
+  templateId Int
+
+  itemCode      String
+  itemName      String
+  quantity      Float // ✅ 1 unit için gereken miktar (per-unit)
+  uomName       String?
+  warehouseCode String?
+  issueMethod   String?
+  lineNo        Int?
+
+  template AkupleItemTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, itemCode, lineNo])
+  @@index([templateId])
 }

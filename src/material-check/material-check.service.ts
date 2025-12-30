@@ -27,10 +27,11 @@ export class MaterialCheckService {
     );
 
     // 1) BOM çek
-    const bomLines = await this.sapBom.getBomByItemCode(parentItemCode);
-    console.log('BOOOOMLINESSS', bomLines);
-    this.logger.log(`BOM lines count: ${bomLines.length}`);
-    this.logger.debug(
+    const bomResult = await this.sapBom.getBomByItemCode(parentItemCode);
+    const bomLines = bomResult.items; // ✅ artık array burası
+
+    this.logger.log(`BOM item lines count: ${bomLines.length}`);
+    this.logger.log(
       `BOM sample (first 20): ${JSON.stringify(bomLines.slice(0, 20), null, 2)}`,
     );
 
@@ -57,12 +58,11 @@ export class MaterialCheckService {
     >();
 
     for (const l of bomLines) {
-      const itemCode = String(l.ItemCode ?? '').trim();
+      const itemCode = String(l.itemCode ?? '').trim();
       if (!itemCode) continue;
 
-      const whsCode =
-        String(l.WhsCode ?? l.Warehouse ?? '').trim() || fallbackWhsCode;
-      const perUnit = Number(l.Quantity ?? 0);
+      const whsCode = String(l.whsCode ?? '').trim() || fallbackWhsCode;
+      const perUnit = Number(l.quantity ?? 0);
       const required = requestedQty * perUnit;
 
       const key = `${itemCode}__${whsCode}`;
@@ -162,22 +162,20 @@ export class MaterialCheckService {
   }): Promise<MaterialShortageItemDto[]> {
     const { parentItemCode, requestedQty, fallbackWhsCode } = params;
 
-    const bomLines = await this.sapBom.getBomByItemCode(parentItemCode);
-    if (!bomLines?.length) return [];
+    const bomResult = await this.sapBom.getBomByItemCode(parentItemCode);
+    const bomLines = bomResult.items; // ✅ array
 
-    // ihtiyaç grupla
+    if (!bomLines?.length) return [];
     const needsMap = new Map<
       string,
       { itemCode: string; whsCode: string; required: number }
     >();
-
     for (const l of bomLines) {
-      const itemCode = String(l.ItemCode ?? '').trim();
+      const itemCode = String(l.itemCode ?? '').trim(); // ✅ camelCase
       if (!itemCode) continue;
 
-      const whsCode =
-        String(l.WhsCode ?? l.Warehouse ?? '').trim() || fallbackWhsCode;
-      const perUnit = Number(l.Quantity ?? 0);
+      const whsCode = String(l.whsCode ?? '').trim() || fallbackWhsCode; // ✅ camelCase
+      const perUnit = Number(l.quantity ?? 0); // ✅ camelCase
       const required = requestedQty * perUnit;
 
       const key = `${itemCode}__${whsCode}`;

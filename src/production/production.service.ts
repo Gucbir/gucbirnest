@@ -18,6 +18,8 @@ import { SapBomService } from 'src/sap-bom/sap-bom.service';
 import { CreateProductionOrderDto } from './dto/create-production-order.dto';
 import { ResumeOperationDto } from './dto/resume-operation.dto';
 import { PauseOperationDto } from './dto/pause-operation.dto';
+import { Prisma } from '@prisma/client';
+
 const STAGE_MAP_BY_ID: Record<
   string,
   {
@@ -27,9 +29,48 @@ const STAGE_MAP_BY_ID: Record<
     departmentCode?: string | null;
   }
 > = {
-  // "1": { stageCode: "AKUPLE", stageName: "AKUPLE MONTAJ" },
-  // "2": { stageCode: "MOTOR_MONTAJ", stageName: "MOTOR MONTAJ" },
-  // ...
+  '1': {
+    stageCode: 'AKUPLE',
+    stageName: 'AKUPLE',
+    sequenceNo: 10,
+    departmentCode: 'AKUPLE',
+  },
+  '2': {
+    stageCode: 'MOTOR_MONTAJ',
+    stageName: 'MOTOR MONTAJ',
+    sequenceNo: 20,
+    departmentCode: 'MOTOR',
+  },
+  '3': {
+    stageCode: 'PANO_TESISAT',
+    stageName: 'PANO VE TESİSAT',
+    sequenceNo: 30,
+    departmentCode: 'TESISAT',
+  },
+  '4': {
+    stageCode: 'TEST',
+    stageName: 'JENERATÖR TEST',
+    sequenceNo: 40,
+    departmentCode: 'TEST',
+  },
+  '5': {
+    stageCode: 'KABIN_GIYDIRME',
+    stageName: 'KABİN GİYDİRME',
+    sequenceNo: 50,
+    departmentCode: 'KABIN',
+  },
+  '6': {
+    stageCode: 'FONK_KALITE',
+    stageName: 'FONKSİYONEL KALİTE KONTROL',
+    sequenceNo: 60,
+    departmentCode: 'KALITE',
+  },
+  '7': {
+    stageCode: 'FINAL',
+    stageName: 'FİNAL KONTROL',
+    sequenceNo: 70,
+    departmentCode: 'KALITE',
+  },
 };
 
 const STAGE_MAP: Record<
@@ -95,6 +136,17 @@ export class ProductionService {
     private readonly sapBomService: SapBomService,
   ) {}
 
+  private normalizeStageCode(code: string) {
+    return String(code ?? '')
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '_')
+      .replace(/-+/g, '_')
+      .replace(/[^\w]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
   async importFromOrderLine(dto: any) {
     const docEntry = Number(dto?.docEntry ?? dto?.orderId);
     const lineNum = Number(dto?.lineNum);
@@ -124,43 +176,35 @@ export class ProductionService {
     if (!itemName)
       throw new BadRequestException(`itemName bulunamadı: ${itemCode}`);
 
-    // ✅ ITT1 + ITT2 birlikte
     const { items: bomItems, routeStages: bomRouteStages } =
       await this.sapBomService.getBomByItemCode(itemCode);
 
-    // Stage eşlemesi: ITT1.StageID (AbsEntry) -> ITT2.StgEntry (AbsEntry)
-    // ✅ Stage eşlemesi: ITT1.StageID (1..7) -> ITT2.StageId (1..7)
-    const stageByStageId = new Map<number, (typeof bomRouteStages)[number]>();
-    for (const s of bomRouteStages) {
-      if (s.stageId) stageByStageId.set(s.stageId, s);
-    }
-
-    const items = bomItems
-      .filter((x) => x.lineType === 4)
-      .map((x) => {
-        const st = x.stageId ? stageByStageId.get(x.stageId) : undefined;
-        return {
-          itemCode: x.itemCode,
-          itemName: x.itemName,
-          quantity: x.quantity,
-          whsCode: x.whsCode,
-          issueMethod: x.issueMethod,
-          stageId: st?.stageId ?? x.stageId ?? null, // hiç yoksa null
-          visOrder: x.visOrder,
-        };
-      })
+    // ✅ items payload (stageId: 1..7 olmalı)
+    const items = (bomItems ?? [])
+      .filter((x) => x.lineType === 4) // istersen kaldır
+      .map((x) => ({
+        itemCode: x.itemCode,
+        itemName: x.itemName,
+        quantity: x.quantity, // per-unit
+        whsCode: x.whsCode,
+        issueMethod: x.issueMethod,
+        stageId: x.stageId ?? null, // ✅ 1..7 (ITT2 stageId)
+        visOrder: x.visOrder ?? 0,
+      }))
       .filter((x) => x.itemCode && x.quantity > 0);
 
-    // ✅ routeStages payload: direkt ITT2
-    const routeStages = bomRouteStages.map((s) => ({
-      stageId: s.stageId,
-      stageName: s.stageName || s.stageCodeRaw || '',
-      stageCodeRaw: s.stageCodeRaw || undefined, // ORST.Code (AKUPLE vb) varsa direkt kullan
-      visOrder: s.seqNum,
+    // ✅ routeStages payload (ITT2)
+    const routeStages = (bomRouteStages ?? []).map((s) => ({
+      stageId: s.stageId ?? null, // 1..7
+      stageName: s.stageName ?? '', // "MOTOR MONTAJ"
+      stageCodeRaw: s.stageCodeRaw ?? '', // "MOTOR MONTAJ" (raw)
+      visOrder: s.seqNum ?? 0, // sıra
     }));
 
     this.logger.log(
-      `[importFromOrderLine] routeStages=${routeStages.length} items=${items.length} stageIds=${JSON.stringify(routeStages.map((s) => s.stageId))}`,
+      `[importFromOrderLine] routeStages=${routeStages.length} items=${items.length} stageIds=${JSON.stringify(
+        routeStages.map((s) => s.stageId),
+      )}`,
     );
 
     const createDto: CreateProductionOrderDto = {
@@ -177,6 +221,212 @@ export class ProductionService {
     });
 
     return { ok: true, productionOrderId: prod?.id, docEntry, lineNum };
+  }
+
+  async createProductionOrderAkupleOnly(
+    dto: CreateProductionOrderDto,
+    payload: {
+      akupleItems: {
+        itemCode: string;
+        itemName: string | null;
+        quantity: number;
+        whsCode: string | null;
+        issueMethod: string | null;
+        visOrder: number;
+      }[];
+    },
+  ) {
+    const sapDocEntry = dto.docEntry != null ? Number(dto.docEntry) : null;
+    const sapDocNum = dto.docNum != null ? Number(dto.docNum) : null;
+
+    const itemCode = String(dto.itemCode ?? '').trim();
+    const itemName = String(dto.itemName ?? '').trim();
+    const quantity = Number(dto.quantity);
+
+    if (!itemCode) throw new BadRequestException('itemCode zorunlu');
+    if (!itemName) throw new BadRequestException('itemName zorunlu');
+    if (!Number.isFinite(quantity) || quantity <= 0)
+      throw new BadRequestException('quantity 0 olamaz');
+    if (!Number.isInteger(quantity))
+      throw new BadRequestException(`quantity integer olmalı. got=${quantity}`);
+
+    const shouldHaveSerial = itemCode.startsWith('6.');
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1) idempotent order
+      const existing = await tx.productionOrder.findFirst({
+        where: {
+          ...(sapDocEntry ? { sapDocEntry } : {}),
+          ...(sapDocNum && !sapDocEntry ? { sapDocNum } : {}),
+          itemCode,
+          status: { not: 'cancelled' },
+        },
+        select: { id: true },
+      });
+
+      const order = existing
+        ? await tx.productionOrder.update({
+            where: { id: existing.id },
+            data: {
+              sapDocEntry,
+              sapDocNum,
+              itemCode,
+              itemName,
+              quantity,
+              status: 'planned',
+            },
+          })
+        : await tx.productionOrder.create({
+            data: {
+              sapDocEntry,
+              sapDocNum,
+              itemCode,
+              itemName,
+              quantity,
+              status: 'planned',
+            },
+          });
+
+      // 2) units
+      if (shouldHaveSerial) {
+        const currentUnitCount = await tx.productionOrderUnit.count({
+          where: { orderId: order.id },
+        });
+
+        const needToCreate = Math.max(0, quantity - currentUnitCount);
+
+        for (let i = 0; i < needToCreate; i++) {
+          const serialNo = await this.allocateNextProductionSerial(tx);
+          await tx.productionOrderUnit.create({
+            data: { orderId: order.id, serialNo, status: 'planned' },
+          });
+        }
+      }
+
+      const units = shouldHaveSerial
+        ? await tx.productionOrderUnit.findMany({
+            where: { orderId: order.id },
+            select: { id: true, serialNo: true, status: true },
+            orderBy: { id: 'asc' },
+          })
+        : [];
+
+      // 3) ✅ AKUPLE operation upsert (öneri: schema’ya @@unique([orderId, stageCode]) ekli olsun)
+      const opExisting = await tx.productionOperation.findFirst({
+        where: { orderId: order.id, stageCode: 'AKUPLE' },
+        select: { id: true },
+      });
+
+      const akupleOp = opExisting
+        ? await tx.productionOperation.update({
+            where: { id: opExisting.id },
+            data: {
+              stageCode: 'AKUPLE',
+              stageName: 'AKUPLE',
+              sequenceNo: 10,
+              departmentCode: 'AKUPLE',
+              status: 'waiting',
+            },
+          })
+        : await tx.productionOperation.create({
+            data: {
+              orderId: order.id,
+              stageCode: 'AKUPLE',
+              stageName: 'AKUPLE',
+              sequenceNo: 10,
+              departmentCode: 'AKUPLE',
+              status: 'waiting',
+            },
+          });
+
+      // 4) ✅ Template varsa kullan, yoksa payload.akupleItems ile template yarat
+      let template = await tx.akupleItemTemplate.findUnique({
+        where: { parentItemCode: itemCode },
+        include: { lines: true },
+      });
+
+      if (!template || !template.lines?.length) {
+        const input = Array.isArray(payload?.akupleItems)
+          ? payload.akupleItems
+          : [];
+
+        const linesData = input
+          .sort((a, b) => Number(a.visOrder ?? 0) - Number(b.visOrder ?? 0))
+          .map((l, idx) => ({
+            itemCode: String(l.itemCode ?? '').trim(),
+            itemName:
+              String(l.itemName ?? '').trim() ||
+              String(l.itemCode ?? '').trim(),
+            quantity: Number(l.quantity ?? 0) || 0, // ✅ per-unit
+            warehouseCode: l.whsCode ? String(l.whsCode) : null,
+            issueMethod: l.issueMethod ? String(l.issueMethod) : null,
+            lineNo: Number(l.visOrder ?? idx) || idx,
+            uomName: null,
+          }))
+          .filter((x) => x.itemCode && x.quantity > 0);
+
+        if (!linesData.length) {
+          throw new BadRequestException(
+            `[AKUPLE] template yok ve payload.akupleItems boş. itemCode=${itemCode}`,
+          );
+        }
+
+        template = await tx.akupleItemTemplate.create({
+          data: {
+            parentItemCode: itemCode,
+            parentItemName: itemName,
+            lines: { create: linesData },
+          },
+          include: { lines: true },
+        });
+      }
+
+      // 5) ✅ AKUPLE operation items reset + bas
+      await tx.productionOperationItem.deleteMany({
+        where: { operationId: akupleOp.id },
+      });
+
+      const opItemsData = template.lines
+        .sort((a, b) => Number(a.lineNo ?? 0) - Number(b.lineNo ?? 0))
+        .map((l, idx) => ({
+          operationId: akupleOp.id,
+          itemCode: l.itemCode,
+          itemName: l.itemName,
+          quantity: l.quantity, // ✅ per-unit
+          uomName: l.uomName ?? null,
+          warehouseCode: l.warehouseCode ?? null,
+          issueMethod: l.issueMethod ?? null,
+          lineNo: l.lineNo ?? idx,
+
+          // seçimler unit tablosunda tutulacak
+          selectedItemCode: null,
+          selectedItemName: null,
+          selectedWarehouseCode: null,
+          selectedQuantity: null,
+          isAlternative: false,
+          sapIssueDocEntry: null,
+        }));
+
+      await tx.productionOperationItem.createMany({ data: opItemsData });
+
+      // 6) ✅ AKUPLE operationUnit aç
+      if (units.length) {
+        await tx.productionOperationUnit.createMany({
+          data: units.map((u) => ({
+            operationId: akupleOp.id,
+            unitId: u.id,
+            status: 'waiting',
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      const finalUnitCount = await tx.productionOrderUnit.count({
+        where: { orderId: order.id },
+      });
+
+      return { ...order, unitCount: finalUnitCount, akupleOpId: akupleOp.id };
+    });
   }
 
   async getOperationsByStageCode(stageCode: string) {
@@ -321,42 +571,127 @@ export class ProductionService {
     });
   }
 
-  async getOperationIdByStageCode(tx: any, orderId: number, stageCode: string) {
+  private async getOperationIdByStageCode(
+    tx: Prisma.TransactionClient,
+    orderId: number,
+    stageCode: string,
+  ) {
+    const want = this.normalizeStageCode(stageCode);
+
     const op = await tx.productionOperation.findFirst({
-      where: { orderId, stageCode },
-      select: { id: true },
+      where: {
+        orderId,
+        OR: [
+          { stageCode: stageCode }, // raw
+          { stageCode: want }, // normalized
+        ],
+      },
+      select: { id: true, stageCode: true },
     });
-    return op?.id ?? null;
+
+    if (!op) {
+      this.logger.warn(
+        `[getOperationIdByStageCode] NOT FOUND orderId=${orderId} stageCode=${stageCode} want=${want}`,
+      );
+      return null;
+    }
+
+    return op.id;
   }
 
-  async openUnitForStage(tx: any, operationId: number, unitId: number) {
-    await tx.productionOperationUnit.createMany({
-      data: [{ operationId, unitId, status: 'waiting' }],
-      skipDuplicates: true,
+  private async openUnitForStage(
+    tx: Prisma.TransactionClient,
+    operationId: number,
+    unitId: number,
+  ) {
+    return tx.productionOperationUnit.upsert({
+      where: { operationId_unitId: { operationId, unitId } },
+      update: {
+        // zaten varsa “waiting”e çek (istersen dokunma)
+        status: 'waiting',
+        startedAt: null,
+        finishedAt: null,
+        pausedAt: null,
+      },
+      create: {
+        operationId,
+        unitId,
+        status: 'waiting',
+      },
     });
   }
 
-  async isAllDoneInStages(
-    tx: any,
+  private async isAllDoneInStages(
+    tx: Prisma.TransactionClient,
     unitId: number,
     orderId: number,
     stageCodes: string[],
   ) {
-    const rows = await tx.productionOperationUnit.findMany({
+    const wanted = stageCodes.map((s) => this.normalizeStageCode(s));
+
+    const ops = await tx.productionOperation.findMany({
       where: {
-        unitId,
-        operation: {
-          orderId,
-          stageCode: { in: stageCodes },
-        },
+        orderId,
+        stageCode: { in: [...stageCodes, ...wanted] },
       },
-      select: { status: true },
+      select: { id: true, stageCode: true },
     });
 
-    // stageCodes kadar kayıt yoksa -> daha açılmamış demek, tamam sayma
-    if (rows.length < stageCodes.length) return false;
+    if (ops.length === 0) return false;
 
-    return rows.every((r) => r.status === 'done');
+    const opIds = ops.map((o) => o.id);
+
+    const doneCount = await tx.productionOperationUnit.count({
+      where: {
+        unitId,
+        operationId: { in: opIds },
+        status: 'done',
+      },
+    });
+
+    // stageCodes sayısı kadar done bekliyoruz
+    return doneCount >= stageCodes.length;
+  }
+
+  private normStageCode(code: string) {
+    return String(code ?? '')
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '_');
+  }
+
+  private async ensureOperation(
+    tx: any,
+    orderId: number,
+    stageCode: string,
+    defaults: {
+      stageName: string;
+      sequenceNo: number;
+      departmentCode?: string | null;
+    },
+  ) {
+    const code = this.normStageCode(stageCode);
+
+    const existing = await tx.productionOperation.findFirst({
+      where: { orderId, stageCode: code },
+      select: { id: true },
+    });
+
+    if (existing) return existing.id;
+
+    const created = await tx.productionOperation.create({
+      data: {
+        orderId,
+        stageCode: code,
+        stageName: defaults.stageName,
+        sequenceNo: defaults.sequenceNo,
+        departmentCode: defaults.departmentCode ?? 'GENEL',
+        status: 'waiting',
+      },
+      select: { id: true },
+    });
+
+    return created.id;
   }
 
   async finishOperationUnit(
@@ -382,7 +717,11 @@ export class ProductionService {
 
       const updated = await tx.productionOperationUnit.update({
         where: { operationId_unitId: { operationId, unitId } },
-        data: { status: 'done', finishedAt: new Date() },
+        data: {
+          status: 'done',
+          finishedAt: new Date(),
+          lastActionByUserId: userId ?? null, // ✅
+        },
       });
 
       await tx.productionOperationUnitLog.create({
@@ -395,22 +734,40 @@ export class ProductionService {
 
       const stageCode = row.operation.stageCode;
       const orderId = row.operation.orderId;
+      this.logger.log(
+        `[finishOperationUnit] stageCode=${stageCode} orderId=${orderId} unitId=${unitId}`,
+      );
 
       // ✅ AKUPLE bitti -> MOTOR + PANO aynı anda aç
       if (stageCode === 'AKUPLE') {
-        const motorOpId = await this.getOperationIdByStageCode(
+        const motorOpId = await this.ensureOperation(
           tx,
           orderId,
           'MOTOR_MONTAJ',
+          {
+            stageName: 'MOTOR MONTAJ',
+            sequenceNo: 20,
+            departmentCode: 'MOTOR',
+          },
         );
-        const panoOpId = await this.getOperationIdByStageCode(
+
+        const panoOpId = await this.ensureOperation(
           tx,
           orderId,
           'PANO_TESISAT',
+          {
+            stageName: 'PANO VE TESİSAT',
+            sequenceNo: 30,
+            departmentCode: 'TESISAT',
+          },
         );
 
-        if (motorOpId) await this.openUnitForStage(tx, motorOpId, unitId);
-        if (panoOpId) await this.openUnitForStage(tx, panoOpId, unitId);
+        this.logger.log(
+          `[finishOperationUnit] ensured motorOpId=${motorOpId} panoOpId=${panoOpId}`,
+        );
+
+        await this.openUnitForStage(tx, motorOpId, unitId);
+        await this.openUnitForStage(tx, panoOpId, unitId);
 
         return updated;
       }
@@ -423,12 +780,17 @@ export class ProductionService {
         ]);
 
         if (allDone) {
-          const kabinOpId = await this.getOperationIdByStageCode(
+          const kabinOpId = await this.ensureOperation(
             tx,
             orderId,
             'KABIN_GIYDIRME',
+            {
+              stageName: 'KABİN GİYDİRME',
+              sequenceNo: 50,
+              departmentCode: 'KABIN',
+            },
           );
-          if (kabinOpId) await this.openUnitForStage(tx, kabinOpId, unitId);
+          await this.openUnitForStage(tx, kabinOpId, unitId);
         }
 
         return updated;
@@ -575,6 +937,7 @@ export class ProductionService {
         );
         return { ...order, unitCount: units.length };
       }
+
       function mapStageCodeFromName(stageName: string) {
         const s = String(stageName ?? '')
           .trim()
@@ -591,48 +954,36 @@ export class ProductionService {
         return null;
       }
 
-      function normalizeStageCode(raw?: string | null) {
-        const s = String(raw ?? '')
-          .trim()
-          .toUpperCase();
-        if (!s) return null;
-
-        // boşluk / tire vb normalize
-        return s
-          .replace(/\s+/g, '_')
-          .replace(/-+/g, '_')
-          .replace(/[^\w]/g, '_')
-          .replace(/_+/g, '_')
-          .replace(/^_+|_+$/g, '');
-      }
-
       const stageMetas = routeStages
         .map((rs) => {
-          const byId = rs.stageId ? STAGE_MAP_BY_ID[String(rs.stageId)] : null;
+          if (!rs.stageId) return null;
 
-          const rawNorm = normalizeStageCode(rs.stageCodeRaw);
-          const nameNorm = normalizeStageCode(rs.stageName); // "MOTOR MONTAJ" => "MOTOR_MONTAJ"
-
-          const stageCode =
-            rawNorm ??
-            byId?.stageCode ??
-            nameNorm ??
-            mapStageCodeFromName(rs.stageName);
-
-          if (!stageCode) return null;
+          const byId = STAGE_MAP_BY_ID[String(rs.stageId)];
+          if (!byId) return null;
 
           return {
             stageId: rs.stageId,
-            stageCode,
-            stageName: byId?.stageName ?? rs.stageName,
-            sequenceNo: Number(rs.visOrder ?? 0) || 0,
-            departmentCode: byId?.departmentCode ?? null,
+            stageCode: byId.stageCode, // ✅ internal
+            stageName: byId.stageName ?? rs.stageName, // ✅ görünen
+            sequenceNo: byId.sequenceNo ?? rs.visOrder ?? 0,
+            departmentCode: byId.departmentCode ?? null,
           };
         })
         .filter((x): x is NonNullable<typeof x> => Boolean(x));
+
       this.logger.log(
-        `[createProductionOrder] stageMetas=${stageMetas.length} codes=${JSON.stringify(stageMetas.map((s) => s.stageCode))}`,
+        `[createProductionOrder] routeStagesIn=${routeStages.length} stageMetas=${stageMetas.length} codes=${JSON.stringify(stageMetas.map((s) => s.stageCode))}`,
       );
+      this.logger.log(
+        `[createProductionOrder] stageMetas=${JSON.stringify(stageMetas)}`,
+      );
+
+      if (!stageMetas.length) {
+        this.logger.warn(
+          `[createProductionOrder] stageMetas boş! routeStages sample=${JSON.stringify(routeStages.slice(0, 5))}`,
+        );
+        return { ...order, unitCount: units.length };
+      }
 
       // op upsert + map (stageId->opId, stageCode->opId)
       const opIdByStageId = new Map<string, number>();
@@ -671,63 +1022,151 @@ export class ProductionService {
         opIdByStageCode.set(meta.stageCode, op.id);
       }
 
-      // 4) ITEMS -> ilgili operasyona yaz (stageId ile)
-      // önce tüm operasyon itemlerini temizle (idempotent için)
-      const allOpIds = Array.from(opIdByStageCode.values());
-      if (allOpIds.length) {
-        await tx.productionOperationItem.deleteMany({
-          where: { operationId: { in: allOpIds } },
+      // ✅ 3.5) AKUPLE TEMPLATE + AKUPLE OP ITEMS (template yoksa payload.items'tan üret)
+      const akupleOpId2 = opIdByStageCode.get('AKUPLE');
+      const akupleStageId = STAGE_MAP_BY_ID['1'] ? 1 : null; // (bizde 1=AKUPLE)
+      if (akupleOpId2) {
+        // 1) template çek
+        let template = await tx.akupleItemTemplate.findUnique({
+          where: { parentItemCode: itemCode },
+          include: { lines: true },
         });
-      }
 
-      // items’i operationId’ye grupla
-      const items = Array.isArray(payload?.items) ? payload.items : [];
-      const itemsByOpId = new Map<number, any[]>();
+        // 2) template yoksa: payload.items içinden AKUPLE stageId satırlarını alıp template oluştur
+        if (!template || !template.lines?.length) {
+          const allItems = Array.isArray(payload?.items) ? payload.items : [];
 
-      for (const it of items) {
-        const sid = it.stageId != null ? String(it.stageId) : null;
+          // AKUPLE kalemleri: stageId=1 (veya stage map ile bul)
+          const input = allItems
+            .filter((x) => x.stageId === 1) // ✅ AKUPLE stageId
+            .sort((a, b) => Number(a.visOrder ?? 0) - Number(b.visOrder ?? 0));
 
-        // stageId ile bulamazsak GENEL/AKUPLE’ye at (senin tercihin)
-        const opId =
-          (sid && opIdByStageId.get(sid)) ??
-          opIdByStageCode.get('AKUPLE') ??
-          allOpIds[0];
-
-        if (!opId) continue;
-
-        const arr = itemsByOpId.get(opId) ?? [];
-        arr.push(it);
-        itemsByOpId.set(opId, arr);
-      }
-
-      for (const [opId, arr] of itemsByOpId.entries()) {
-        const itemsData = arr
-          .sort((a, b) => Number(a.visOrder ?? 0) - Number(b.visOrder ?? 0))
-          .map((l, idx) => {
-            const bomItemCode = String(l.itemCode ?? '').trim();
-            const bomItemName = String(l.itemName ?? '').trim() || bomItemCode;
-
-            // l.quantity zaten BOM satırındaki miktar (1 set için)
-            // order qty kadar çarp
-            const requiredQty = quantity * (Number(l.quantity ?? 0) || 0);
-
-            return {
-              operationId: opId,
-              itemCode: bomItemCode,
-              itemName: bomItemName,
-              quantity: requiredQty,
-              uomName: null, // sende uomName yok payload’da, istersen ekleriz
+          const linesData = input
+            .map((l, idx) => ({
+              itemCode: String(l.itemCode ?? '').trim(),
+              itemName:
+                String(l.itemName ?? '').trim() ||
+                String(l.itemCode ?? '').trim(),
+              quantity: Number(l.quantity ?? 0) || 0, // ✅ per-unit
               warehouseCode: l.whsCode ? String(l.whsCode) : null,
               issueMethod: l.issueMethod ? String(l.issueMethod) : null,
               lineNo: Number(l.visOrder ?? idx) || idx,
-            };
-          })
-          .filter((x) => x.itemCode && x.quantity > 0);
+              uomName: null,
+            }))
+            .filter((x) => x.itemCode && x.quantity > 0);
 
-        if (itemsData.length) {
-          await tx.productionOperationItem.createMany({ data: itemsData });
+          if (!linesData.length) {
+            this.logger.warn(
+              `[AKUPLE TEMPLATE] template yok ve payload.items içinde AKUPLE satırı yok. itemCode=${itemCode}`,
+            );
+          } else {
+            template = await tx.akupleItemTemplate.create({
+              data: {
+                parentItemCode: itemCode,
+                parentItemName: itemName,
+                lines: { create: linesData },
+              },
+              include: { lines: true },
+            });
+          }
+        }
+
+        // 3) template varsa: AKUPLE operation items reset + bas
+        if (template?.lines?.length) {
+          await tx.productionOperationItem.deleteMany({
+            where: { operationId: akupleOpId2 },
+          });
+
+          const opItemsData = template.lines
+            .sort((a, b) => Number(a.lineNo ?? 0) - Number(b.lineNo ?? 0))
+            .map((l, idx) => ({
+              operationId: akupleOpId2,
+              itemCode: l.itemCode,
+              itemName: l.itemName,
+              // ⚠️ DİKKAT: productionOperationItem.quantity sende TOTAL kullanıyorsun.
+              // AKUPLE ekranında unitQuantity hesaplıyorsun; bu yüzden totalQuantity = orderQty * perUnit:
+              quantity: quantity * (Number(l.quantity ?? 0) || 0),
+              uomName: l.uomName ?? null,
+              warehouseCode: l.warehouseCode ?? null,
+              issueMethod: l.issueMethod ?? null,
+              lineNo: l.lineNo ?? idx,
+
+              selectedItemCode: null,
+              selectedItemName: null,
+              selectedWarehouseCode: null,
+              selectedQuantity: null,
+              isAlternative: false,
+              sapIssueDocEntry: null,
+            }))
+            .filter((x) => x.itemCode && x.quantity > 0);
+
+          if (opItemsData.length) {
+            await tx.productionOperationItem.createMany({ data: opItemsData });
+          }
+
+          this.logger.log(
+            `[AKUPLE TEMPLATE] basıldı. parent=${itemCode} lines=${template.lines.length}`,
+          );
         }
       }
+
+      // // 4) ITEMS -> ilgili operasyona yaz (stageId ile)
+      // // önce tüm operasyon itemlerini temizle (idempotent için)
+      // const allOpIds = Array.from(opIdByStageCode.values());
+      // if (allOpIds.length) {
+      //   await tx.productionOperationItem.deleteMany({
+      //     where: { operationId: { in: allOpIds } },
+      //   });
+      // }
+
+      // // items’i operationId’ye grupla
+      // const items = Array.isArray(payload?.items) ? payload.items : [];
+      // const itemsByOpId = new Map<number, any[]>();
+
+      // for (const it of items) {
+      //   const sid = it.stageId != null ? String(it.stageId) : null;
+
+      //   // stageId ile bulamazsak GENEL/AKUPLE’ye at (senin tercihin)
+      //   const opId =
+      //     (sid && opIdByStageId.get(sid)) ??
+      //     opIdByStageCode.get('AKUPLE') ??
+      //     allOpIds[0];
+
+      //   if (!opId) continue;
+
+      //   const arr = itemsByOpId.get(opId) ?? [];
+      //   arr.push(it);
+      //   itemsByOpId.set(opId, arr);
+      // }
+
+      // for (const [opId, arr] of itemsByOpId.entries()) {
+      //   const itemsData = arr
+      //     .sort((a, b) => Number(a.visOrder ?? 0) - Number(b.visOrder ?? 0))
+      //     .map((l, idx) => {
+      //       const bomItemCode = String(l.itemCode ?? '').trim();
+      //       const bomItemName = String(l.itemName ?? '').trim() || bomItemCode;
+
+      //       // l.quantity zaten BOM satırındaki miktar (1 set için)
+      //       // order qty kadar çarp
+      //       const requiredQty = quantity * (Number(l.quantity ?? 0) || 0);
+
+      //       return {
+      //         operationId: opId,
+      //         itemCode: bomItemCode,
+      //         itemName: bomItemName,
+      //         quantity: requiredQty,
+      //         uomName: null, // sende uomName yok payload’da, istersen ekleriz
+      //         warehouseCode: l.whsCode ? String(l.whsCode) : null,
+      //         issueMethod: l.issueMethod ? String(l.issueMethod) : null,
+      //         lineNo: Number(l.visOrder ?? idx) || idx,
+      //       };
+      //     })
+      //     .filter((x) => x.itemCode && x.quantity > 0);
+
+      //   if (itemsData.length) {
+      //     await tx.productionOperationItem.createMany({ data: itemsData });
+      //   }
+      // }
 
       // 5) ✅ AKUPLE operationUnit’lerini aç (sadece AKUPLE waiting)
       const akupleOpId = opIdByStageCode.get('AKUPLE');
@@ -747,6 +1186,86 @@ export class ProductionService {
       });
 
       return { ...order, unitCount: finalUnitCount };
+    });
+  }
+
+  async selectAlternativeOnlyAkuple(
+    operationId: number,
+    unitId: number,
+    itemId: number,
+    userId: number | null,
+    body: {
+      isAlternative: boolean;
+      selectedItemCode?: string;
+      selectedItemName?: string;
+      selectedWarehouseCode?: string;
+      selectedQuantity?: number;
+      note?: string;
+    },
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      // item doğrula + BOM bilgisini al
+      const item = await tx.productionOperationItem.findFirst({
+        where: { id: itemId, operationId },
+        select: {
+          id: true,
+          itemCode: true,
+          itemName: true,
+          warehouseCode: true,
+          quantity: true,
+          operation: { select: { stageCode: true } },
+        },
+      });
+      if (!item) throw new BadRequestException('item bulunamadı');
+      if (item.operation.stageCode !== 'AKUPLE')
+        throw new BadRequestException(
+          'Alternatif seçim sadece AKUPLE için yapılabilir',
+        );
+
+      // selection upsert (güncel durum)
+      const sel = await tx.productionOperationUnitItemSelection.upsert({
+        where: { operationId_unitId_itemId: { operationId, unitId, itemId } },
+        create: {
+          operationId,
+          unitId,
+          itemId,
+          isAlternative: Boolean(body.isAlternative),
+          selectedItemCode: body.selectedItemCode ?? null,
+          selectedItemName: body.selectedItemName ?? null,
+          selectedWarehouseCode: body.selectedWarehouseCode ?? null,
+          selectedQuantity: body.selectedQuantity ?? null,
+        },
+        update: {
+          isAlternative: Boolean(body.isAlternative),
+          selectedItemCode: body.selectedItemCode ?? null,
+          selectedItemName: body.selectedItemName ?? null,
+          selectedWarehouseCode: body.selectedWarehouseCode ?? null,
+          selectedQuantity: body.selectedQuantity ?? null,
+        },
+      });
+
+      // log (tarihçe)
+      await tx.productionAlternativeLog.create({
+        data: {
+          operationId,
+          unitId,
+          itemId,
+          bomItemCode: item.itemCode,
+          bomItemName: item.itemName,
+          bomWhsCode: item.warehouseCode,
+          bomQty: item.quantity,
+          selectedItemCode: sel.selectedItemCode,
+          selectedItemName: sel.selectedItemName,
+          selectedWhsCode: sel.selectedWarehouseCode,
+          selectedQty: sel.selectedQuantity,
+          isAlternative: sel.isAlternative,
+          userId: userId ?? null,
+          action: body.isAlternative ? 'select' : 'clear',
+          note: body.note ?? null,
+        },
+      });
+
+      return sel;
     });
   }
 
@@ -808,55 +1327,49 @@ export class ProductionService {
       );
     }
 
-    // orderHeader.itemCode -> "6.202300040" gibi
     this.logger.log(
       `[ProductionService] Order header for ${docNum}: ${JSON.stringify(orderHeader)}`,
     );
 
-    // 2) BOM satırlarını çek
+    // 2) BOM + Route çek
+    // 🔴 Eğer BOM işi SapBomService’teyse bunu kullan:
+    // const bomResult = await this.sapBomService.getBomByItemCode(orderHeader.itemCode);
     const bomResult = await this.sap.getBomByItemCode(orderHeader.itemCode);
-    console.log(bomResult, '12222222222222');
-    const bomLines = bomResult?.value ?? [];
+
+    const bomLines = bomResult.items ?? []; // ✅ items array
+    const routeStages = bomResult.routeStages ?? []; // ✅ stages array
 
     this.logger.log(
-      `[ProductionService] BOM lines for item ${orderHeader.itemCode}: count=${bomLines.length}`,
+      `[ProductionService] BOM items for item ${orderHeader.itemCode}: count=${bomLines.length}`,
+    );
+    this.logger.log(
+      `[ProductionService] Route stages for item ${orderHeader.itemCode}: count=${routeStages.length}`,
     );
 
-    // 3) İstersen burada kendi DTO'nuna map et
+    // 3) DTO map (artık camelCase zaten geldiği için çoğu direkt)
     const mappedBomLines = bomLines.map((line: any) => ({
-      bomItemCode: line.BomItemCode,
-      fatherItemCode: line.FatherItemCode,
-      itemCode: line.ItemCode,
-      itemName: line.ItemName,
-      quantity: line.Quantity,
-      whsCode: line.WhsCode,
-      uomName: line.UomName,
-      issueMethod: line.IssueMethod,
-      visOrder: line.VisOrder,
-      stageId: line.StageId,
+      itemCode: line.itemCode,
+      itemName: line.itemName,
+      quantity: line.quantity,
+      whsCode: line.whsCode,
+      uomName: line.uomName,
+      issueMethod: line.issueMethod,
+      visOrder: line.visOrder,
+      stageId: line.stageId, // ITT1.StageID (sende 1..7 gibi geliyor olabilir)
+      lineType: line.lineType,
     }));
 
-    // 4) Buradan sonra istersen Prisma ile kaydedebilirsin
-    // örnek:
-    /*
-  await this.prisma.productionOrder.create({
-    data: {
-      sapDocNum: orderHeader.sapDocNum,
-      itemCode: orderHeader.itemCode,
-      itemName: orderHeader.itemName,
-      quantity: orderHeader.quantity,
-      bomLines: {
-        createMany: {
-          data: mappedBomLines,
-        },
-      },
-    },
-  });
-  */
+    const mappedRouteStages = routeStages.map((s: any) => ({
+      stageId: s.stageId, // 1..7
+      stgEntry: s.stgEntry, // ORST.AbsEntry
+      seqNum: s.seqNum,
+      stageName: s.stageName,
+      stageCodeRaw: s.stageCodeRaw, // "MOTOR MONTAJ" gibi gelebilir
+    }));
 
-    // Şimdilik sadece geriye döndürelim:
     return {
       header: orderHeader,
+      routeStages: mappedRouteStages,
       bomLines: mappedBomLines,
     };
   }
@@ -1116,6 +1629,7 @@ export class ProductionService {
       data: {
         status: 'in_progress',
         startedAt: row.startedAt ?? now,
+        lastActionByUserId: userId ?? null,
       },
     });
 
@@ -1169,6 +1683,7 @@ export class ProductionService {
       data: {
         status: 'paused',
         pausedAt: now,
+        lastActionByUserId: userId ?? null,
       },
     });
 
@@ -1223,6 +1738,7 @@ export class ProductionService {
         status: 'in_progress',
         pausedAt: null,
         pausedTotalSec: { increment: diffSec },
+        lastActionByUserId: userId ?? null,
       },
     });
 
@@ -1237,14 +1753,18 @@ export class ProductionService {
     return { ok: true };
   }
 
-  async getStageOperationsAsUnits(stageCode: string) {
-    const code = String(stageCode ?? '')
-      .trim()
-      .toUpperCase();
-    if (!code) return [];
+  async getStageOperationsAsUnits(params: {
+    orderId?: number;
+    stageCode?: string;
+  }) {
+    const { orderId, stageCode } = params;
+
+    const whereOp: any = {};
+    if (stageCode) whereOp.stageCode = stageCode;
+    if (orderId) whereOp.orderId = orderId;
 
     const ops = await this.prisma.productionOperation.findMany({
-      where: { stageCode: code },
+      where: whereOp,
       include: {
         order: {
           include: {
@@ -1253,26 +1773,113 @@ export class ProductionService {
         },
         operationUnits: {
           select: {
-            id: true, // ✅ ekledik (log/debug için)
+            id: true,
             unitId: true,
             status: true,
             startedAt: true,
             finishedAt: true,
             pausedAt: true,
             pausedTotalSec: true,
+            updatedAt: true,
+            lastActionByUserId: true,
+            lastActionByUser: {
+              select: { id: true, fullName: true, email: true },
+            },
           },
         },
-        items: true,
+        items: {
+          select: {
+            id: true,
+            operationId: true,
+            itemCode: true,
+            itemName: true,
+            uomName: true,
+            warehouseCode: true,
+            issueMethod: true,
+            lineNo: true,
+            quantity: true,
+
+            selectedItemCode: true,
+            selectedItemName: true,
+            selectedWarehouseCode: true,
+            selectedQuantity: true,
+
+            isAlternative: true,
+            sapIssueDocEntry: true,
+          },
+          orderBy: { lineNo: 'asc' }, // istersen
+        },
       },
       orderBy: [{ id: 'desc' }],
       take: 200,
     });
 
-    return ops.flatMap((op) => {
+    return this.mapOperationsAsUnits(ops);
+  }
+
+  // ProductionService içinde (private yapabilirsin)
+  private mapOperationsAsUnits(
+    ops: Array<{
+      id: number;
+      orderId: number;
+      stageCode: string;
+      stageName: string;
+      status: string;
+
+      order?: {
+        id: number;
+        sapDocEntry: number | null;
+        sapDocNum: number | null;
+        itemCode: string;
+        itemName: string;
+        quantity: number;
+        status: string;
+        units?: Array<{ id: number; serialNo: string; status: string }>;
+      } | null;
+
+      operationUnits: Array<{
+        id: number;
+        unitId: number;
+        status: string;
+        startedAt: Date | null;
+        finishedAt: Date | null;
+        pausedAt: Date | null;
+        pausedTotalSec: number;
+        updatedAt?: Date;
+        lastActionByUserId?: number | null;
+        lastActionByUser?: {
+          id: number;
+          fullName: string | null;
+          email: string | null;
+        } | null;
+      }>;
+
+      items?: Array<{
+        id: number;
+        operationId: number;
+        itemCode: string;
+        itemName: string | null;
+        uomName: string | null;
+        warehouseCode: string | null;
+        issueMethod: string | null;
+        lineNo: number | null;
+        quantity: number;
+        selectedItemCode: string | null;
+        selectedItemName: string | null;
+        selectedWarehouseCode: string | null;
+        selectedQuantity: number | null;
+        isAlternative: boolean;
+        sapIssueDocEntry: number | null;
+      }>;
+    }>,
+  ) {
+    return (ops ?? []).flatMap((op) => {
       const orderQty = Number(op.order?.quantity ?? 1) || 1;
       const units = op.order?.units ?? [];
 
-      const ouByUnitId = new Map(op.operationUnits.map((x) => [x.unitId, x]));
+      const ouByUnitId = new Map<number, (typeof op.operationUnits)[number]>(
+        (op.operationUnits ?? []).map((x) => [x.unitId, x]),
+      );
 
       return units
         .map((u) => {
@@ -1284,7 +1891,7 @@ export class ProductionService {
             serialNo: u.serialNo,
 
             unitStatus: ou.status,
-            operationUnitId: ou.id, // ✅ lazım olur
+            operationUnitId: ou.id,
 
             operationId: op.id,
             stageCode: op.stageCode,
@@ -1295,6 +1902,11 @@ export class ProductionService {
             finishedAt: ou.finishedAt ?? null,
             pausedAt: ou.pausedAt ?? null,
             pausedTotalSec: ou.pausedTotalSec ?? 0,
+
+            // ✅ UI için
+            updatedAt: (ou as any).updatedAt ?? null,
+            lastActionByUserId: (ou as any).lastActionByUserId ?? null,
+            lastActionByUser: (ou as any).lastActionByUser ?? null,
 
             orderId: op.orderId,
             order: {
@@ -1316,18 +1928,159 @@ export class ProductionService {
               warehouseCode: it.warehouseCode ?? null,
               issueMethod: it.issueMethod ?? null,
               lineNo: it.lineNo ?? null,
+
               totalQuantity: it.quantity,
               unitQuantity: orderQty ? it.quantity / orderQty : it.quantity,
+
               selectedItemCode: it.selectedItemCode ?? null,
               selectedItemName: it.selectedItemName ?? null,
               selectedWarehouseCode: it.selectedWarehouseCode ?? null,
               selectedQuantity: it.selectedQuantity ?? null,
+
               isAlternative: it.isAlternative ?? false,
               sapIssueDocEntry: it.sapIssueDocEntry ?? null,
             })),
           };
         })
         .filter((x): x is NonNullable<typeof x> => Boolean(x));
+    });
+  }
+
+  async selectItemForOperationUnitLine(
+    operationId: number,
+    unitId: number,
+    itemId: number,
+    body: {
+      useAlternative: boolean;
+      selectedItemCode?: string;
+      selectedItemName?: string;
+      selectedWarehouseCode?: string;
+      selectedQuantity?: number;
+      isAlternative?: boolean;
+    },
+  ) {
+    if (!Number.isFinite(operationId) || operationId <= 0) {
+      throw new BadRequestException('operationId geçersiz');
+    }
+    if (!Number.isFinite(unitId) || unitId <= 0) {
+      throw new BadRequestException('unitId geçersiz');
+    }
+    if (!Number.isFinite(itemId) || itemId <= 0) {
+      throw new BadRequestException('itemId geçersiz');
+    }
+
+    const useAlt = Boolean(body?.useAlternative);
+
+    // güvenli trim
+    const selectedItemCode = body?.selectedItemCode
+      ? String(body.selectedItemCode).trim()
+      : null;
+
+    const selectedItemName = body?.selectedItemName
+      ? String(body.selectedItemName).trim()
+      : null;
+
+    const selectedWarehouseCode = body?.selectedWarehouseCode
+      ? String(body.selectedWarehouseCode).trim()
+      : null;
+
+    const selectedQuantity =
+      body?.selectedQuantity == null ? null : Number(body.selectedQuantity);
+
+    if (useAlt) {
+      if (!selectedItemCode) {
+        throw new BadRequestException('selectedItemCode zorunlu');
+      }
+      if (!selectedWarehouseCode) {
+        throw new BadRequestException('selectedWarehouseCode zorunlu');
+      }
+      if (selectedQuantity != null && !Number.isFinite(selectedQuantity)) {
+        throw new BadRequestException('selectedQuantity geçersiz');
+      }
+      if (selectedQuantity != null && selectedQuantity < 0) {
+        throw new BadRequestException('selectedQuantity 0’dan küçük olamaz');
+      }
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // referans kayıtlar var mı? (opsiyonel ama iyi)
+      const [op, unit, item] = await Promise.all([
+        tx.productionOperation.findUnique({
+          where: { id: operationId },
+          select: { id: true },
+        }),
+        tx.productionOrderUnit.findUnique({
+          where: { id: unitId },
+          select: { id: true },
+        }),
+        tx.productionOperationItem.findUnique({
+          where: { id: itemId },
+          select: { id: true, operationId: true },
+        }),
+      ]);
+
+      if (!op) throw new NotFoundException('Operation bulunamadı');
+      if (!unit) throw new NotFoundException('Unit bulunamadı');
+      if (!item) throw new NotFoundException('Item bulunamadı');
+      if (item.operationId !== operationId) {
+        throw new BadRequestException(
+          `itemId=${itemId} bu operationId=${operationId} için değil`,
+        );
+      }
+
+      // useAlternative=false => seçimi kaldır (orijinale dön)
+      if (!useAlt) {
+        await tx.productionOperationUnitItemSelection.deleteMany({
+          where: { operationId, unitId, itemId },
+        });
+
+        return {
+          ok: true,
+          removed: true,
+          operationId,
+          unitId,
+          itemId,
+        };
+      }
+
+      // useAlternative=true => upsert
+      const saved = await tx.productionOperationUnitItemSelection.upsert({
+        where: {
+          operationId_unitId_itemId: { operationId, unitId, itemId },
+        },
+        create: {
+          operationId,
+          unitId,
+          itemId,
+          selectedItemCode,
+          selectedItemName,
+          selectedWarehouseCode,
+          selectedQuantity,
+          isAlternative: body?.isAlternative ?? true,
+        },
+        update: {
+          selectedItemCode,
+          selectedItemName,
+          selectedWarehouseCode,
+          selectedQuantity,
+          isAlternative: body?.isAlternative ?? true,
+        },
+        include: {
+          item: {
+            select: {
+              id: true,
+              itemCode: true,
+              itemName: true,
+              quantity: true,
+              warehouseCode: true,
+              issueMethod: true,
+              lineNo: true,
+            },
+          },
+        },
+      });
+
+      return { ok: true, removed: false, saved };
     });
   }
 
@@ -2030,7 +2783,7 @@ export class ProductionService {
     const ops = await this.prisma.productionOperation.findMany({
       where: {
         stageCode: code,
-        status: { in: ['waiting', 'in_progress', 'paused', 'done'] }, // sende status seti neyse
+        status: { in: ['waiting', 'in_progress', 'paused'] }, // sende status seti neyse
       },
       include: {
         order: true,

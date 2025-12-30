@@ -54,9 +54,10 @@ export class ProductionController {
     return this.productionService.finishOperation(Number(operationId));
   }
 
-  @Patch('operations/:operationId/items/:itemId/select')
-  async selectItemForOperationLine(
+  @Patch('operations/:operationId/units/:unitId/items/:itemId/select')
+  async selectItemForOperationUnitLine(
     @Param('operationId') operationId: string,
+    @Param('unitId') unitId: string,
     @Param('itemId') itemId: string,
     @Body()
     body: {
@@ -65,18 +66,64 @@ export class ProductionController {
       selectedItemName?: string;
       selectedWarehouseCode?: string;
       selectedQuantity?: number;
+      isAlternative?: boolean; // opsiyonel
     },
   ) {
-    return this.productionService.selectItemForOperationLine(
+    return this.productionService.selectItemForOperationUnitLine(
       Number(operationId),
+      Number(unitId),
       Number(itemId),
       body,
     );
   }
 
-  @Get('operations/stage/:stageCode/units')
-  async getStageOperationsAsUnits(@Param('stageCode') stageCode: string) {
-    return this.productionService.getStageOperationsAsUnits(stageCode);
+  @Get('operations-as-units')
+  async getOperationsAsUnits(
+    @Query('orderId') orderId?: string,
+    @Query('stageCode') stageCode?: string,
+  ) {
+    // orderId opsiyonel: boşsa hiç elleme
+    let oid: number | undefined = undefined;
+
+    const rawOrderId = String(orderId ?? '').trim();
+    if (rawOrderId) {
+      if (!/^\d+$/.test(rawOrderId)) {
+        throw new BadRequestException('orderId geçersiz');
+      }
+      oid = Number(rawOrderId);
+    }
+
+    const normalizedStageCode = stageCode
+      ? String(stageCode).trim().toUpperCase().replace(/\s+/g, '_')
+      : undefined;
+
+    return this.productionService.getStageOperationsAsUnits({
+      orderId: oid, // undefined => hepsini getir
+      stageCode: normalizedStageCode,
+    });
+  }
+
+  @Get('operations/order/:orderId/stage/:stageCode/units')
+  async getStageOperationsAsUnits(
+    @Param('orderId') orderId: string,
+    @Param('stageCode') stageCode: string,
+  ) {
+    const normalizedStageCode = String(stageCode ?? '')
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '_');
+
+    return this.productionService.getStageOperationsAsUnits({
+      orderId: Number(orderId),
+      stageCode: normalizedStageCode,
+    });
+  }
+
+  @Get('operations/order/:orderId/units')
+  async getAllStageOperationsAsUnits(@Param('orderId') orderId: string) {
+    return this.productionService.getStageOperationsAsUnits({
+      orderId: Number(orderId),
+    });
   }
 
   @Post('orders/:id/backfill-units')

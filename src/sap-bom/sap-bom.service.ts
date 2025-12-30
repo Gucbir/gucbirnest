@@ -193,7 +193,7 @@ export class SapBomService {
         uomName: String(x.UomName ?? '').trim() || null,
         issueMethod: String(x.IssueMethod ?? '').trim() || null,
         // ITT1.StageID = ORST.AbsEntry = ITT2.StgEntry ile eşleşir
-        stageEntry: Number(x.StageId ?? 0) || null,
+        stageId: Number(x.StageId ?? 0) || null,
         visOrder: Number(x.VisOrder ?? 0) || 0,
       }))
       .filter((it) => it.itemCode && it.quantity > 0);
