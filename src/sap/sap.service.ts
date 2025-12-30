@@ -276,16 +276,49 @@ export class SapService {
   //   }));
   // }
 
-  async getBomByItemCode(itemCode) {
-    console.log(itemCode, '23423424234234234');
-    this.logger.log(`[SapService] getBomByItemCode: itemCode=${itemCode}`);
-    const body = {
-      ParamList: `ItemCode='${itemCode}'`,
-    };
-    const res = await this.post(`SQLQueries('BomByItemCode')/List`, body);
+  async getBomByItemCode(itemCode: string) {
+    const code = String(itemCode ?? '').trim();
+    if (!code) return { items: [], routeStages: [] };
 
-    // Service Layer SQLQueries her zaman { value: [...] } döner
-    return res;
+    this.logger.log(`SAP → BOM+Route çekiliyor: ${code}`);
+
+    const [itemsRaw, stagesRaw] = await Promise.all([
+      this.runSqlQueryPaged('BomByItemCode', code),
+      this.runSqlQueryPaged('BomRouteStagesByItemCode', code),
+    ]);
+
+    // ITT2 → routeStages (doğru isimler burada)
+    const routeStages = stagesRaw
+      .map((x) => ({
+        stageId: Number(x.StageId ?? 0) || null, // ITT2.StageId (1..)
+        seqNum: Number(x.SeqNum ?? 0) || 0,
+        stgEntry: Number(x.StgEntry ?? 0) || null, // ORST.AbsEntry
+        stageName: String(x.StageName ?? '').trim() || null,
+        stageCode: String(x.StageCode ?? '').trim() || null, // ORST.Code (AKUPLE vb)
+      }))
+      .filter((s) => s.stageId || s.stgEntry || s.stageName || s.stageCode)
+      .sort((a, b) => a.seqNum - b.seqNum);
+
+    // ITT1 → items
+    const items = itemsRaw
+      // istersen burada Type filtresi uygula:
+      // .filter(x => Number(x.LineType) === 4)
+      .map((x) => ({
+        lineType: Number(x.LineType ?? 0) || null,
+        fatherItemCode: String(x.FatherItemCode ?? '').trim(),
+        itemCode: String(x.ItemCode ?? '').trim(),
+        itemName: String(x.ItemName ?? '').trim() || null,
+        quantity: Number(x.Quantity ?? 0) || 0,
+        whsCode: String(x.WhsCode ?? '').trim() || null,
+        uomName: String(x.UomName ?? '').trim() || null,
+        issueMethod: String(x.IssueMethod ?? '').trim() || null,
+        // ITT1.StageID = ORST.AbsEntry (StgEntry ile eşleşir)
+        stageEntry: Number(x.StageId ?? 0) || null,
+        visOrder: Number(x.VisOrder ?? 0) || 0,
+      }))
+      .filter((it) => it.itemCode); // boş satırları at
+
+    return { items, routeStages };
   }
 
   async getRoutingStages() {

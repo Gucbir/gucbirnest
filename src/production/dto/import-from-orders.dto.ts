@@ -1,5 +1,9 @@
-// Sadece istek gövdesini temsil ediyor, tip yok
+import { Type } from 'class-transformer';
+import { ArrayMinSize, ValidateNested } from 'class-validator';
+import { ImportFromOrderLineDto } from './import-from-order-line.dto';
 export class ImportFromOrdersDto {
-  // burada property tanımlamaya bile gerek yok,
-  // Nest gelen body'yi bu class'ın instance'ına map ediyor.
+  @ValidateNested({ each: true })
+  @Type(() => ImportFromOrderLineDto)
+  @ArrayMinSize(1)
+  lines: ImportFromOrderLineDto[];
 }
