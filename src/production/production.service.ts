@@ -9,12 +9,12 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { SapService } from '../sap/sap.service';
 import crypto from 'crypto';
-import { MaterialCheckService } from 'src/material-check/material-check.service';
-import { ProcurementService } from 'src/procurement/procurement.service';
+import { MaterialCheckService } from '../material-check/material-check.service';
+import { ProcurementService } from '../procurement/procurement.service';
 import { MaterialCheckModule } from '../material-check/material-check.module';
 import { ImportFromOrderLineDto } from './dto/import-from-order-line.dto';
-import { ItemsService } from 'src/items/items.service';
-import { SapBomService } from 'src/sap-bom/sap-bom.service';
+import { ItemsService } from '../items/items.service';
+import { SapBomService } from '../sap-bom/sap-bom.service';
 import { CreateProductionOrderDto } from './dto/create-production-order.dto';
 import { ResumeOperationDto } from './dto/resume-operation.dto';
 import { PauseOperationDto } from './dto/pause-operation.dto';
