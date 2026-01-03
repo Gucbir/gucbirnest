@@ -113,8 +113,15 @@ export class AuthController {
 
   @UseGuards(AuthGuard('jwt'))
   @Get('getforms')
-  async getForms(@Query('name') name: string) {
-    const forms = await this.formsService.getForms(name);
+  async getForms() {
+    const forms = await this.formsService.getForms();
+    return forms;
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('getoneform')
+  async getOneForm(@Query('name') name: string) {
+    const forms = await this.formsService.getOneForm(name);
     return forms;
   }
 }

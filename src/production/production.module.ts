@@ -5,8 +5,8 @@ import { MaterialCheckModule } from '../material-check/material-check.module';
 import { ProcurementModule } from '../procurement/procurement.module';
 import { SapModule } from '../sap/sap.module'; // ✅
 import { SapBomModule } from '../sap-bom/sap-bom.module';
-import { ItemsModule } from 'src/items/items.module';
-import { SapBomService } from 'src/sap-bom/sap-bom.service';
+import { ItemsModule } from '../items/items.module';
+import { SapBomService } from '../sap-bom/sap-bom.service';
 @Module({
   imports: [
     SapModule,
