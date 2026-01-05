@@ -9,12 +9,12 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { SapService } from '../sap/sap.service';
 import crypto from 'crypto';
-import { MaterialCheckService } from 'src/material-check/material-check.service';
-import { ProcurementService } from 'src/procurement/procurement.service';
+import { MaterialCheckService } from '../material-check/material-check.service';
+import { ProcurementService } from '../procurement/procurement.service';
 import { MaterialCheckModule } from '../material-check/material-check.module';
 import { ImportFromOrderLineDto } from './dto/import-from-order-line.dto';
-import { ItemsService } from 'src/items/items.service';
-import { SapBomService } from 'src/sap-bom/sap-bom.service';
+import { ItemsService } from '../items/items.service';
+import { SapBomService } from '../sap-bom/sap-bom.service';
 import { CreateProductionOrderDto } from './dto/create-production-order.dto';
 import { ResumeOperationDto } from './dto/resume-operation.dto';
 import { PauseOperationDto } from './dto/pause-operation.dto';
@@ -1763,15 +1763,22 @@ export class ProductionService {
     if (stageCode) whereOp.stageCode = stageCode;
     if (orderId) whereOp.orderId = orderId;
 
+    // ✅ done operasyonları alma (değerleri kendi enum’una göre düzelt)
+    whereOp.status = { notIn: ['done', 'finished', 'completed'] };
+
     const ops = await this.prisma.productionOperation.findMany({
       where: whereOp,
       include: {
         order: {
           include: {
-            units: { select: { id: true, serialNo: true, status: true } },
+            units: {
+              where: { status: { notIn: ['done', 'finished', 'completed'] } },
+              select: { id: true, serialNo: true, status: true },
+            },
           },
         },
         operationUnits: {
+          where: { status: { notIn: ['done', 'finished', 'completed'] } },
           select: {
             id: true,
             unitId: true,
@@ -1798,16 +1805,14 @@ export class ProductionService {
             issueMethod: true,
             lineNo: true,
             quantity: true,
-
             selectedItemCode: true,
             selectedItemName: true,
             selectedWarehouseCode: true,
             selectedQuantity: true,
-
             isAlternative: true,
             sapIssueDocEntry: true,
           },
-          orderBy: { lineNo: 'asc' }, // istersen
+          orderBy: { lineNo: 'asc' },
         },
       },
       orderBy: [{ id: 'desc' }],

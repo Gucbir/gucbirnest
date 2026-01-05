@@ -1,12 +1,22 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  UseGuards,
+  BadRequestException,
+} from '@nestjs/common';
 import { SapService, SapUser } from './sap.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { SapSerialsService } from './sap-serials.service';
 
 @Controller('sap')
 export class SapController {
   constructor(
     private readonly sapService: SapService,
+
+    private readonly sapSerialsService: SapSerialsService,
     private readonly prisma: PrismaService,
   ) {}
   // @UseGuards(JwtAuthGuard)
@@ -154,5 +164,27 @@ export class SapController {
       '/BusinessPartners?$top=5&$select=CardCode,CardName,CardType',
     );
     return data;
+  }
+
+  // ✅ Depo özetleri: [{ WhsCode, Qty }]
+  @Get('serial-warehouses')
+  async getSerialWarehouses(@Query('itemCode') itemCode: string) {
+    if (!itemCode?.trim()) throw new BadRequestException('itemCode zorunlu');
+    return this.sapSerialsService.getSerialWarehousesByItem(itemCode);
+  }
+
+  // ✅ Depoya göre seri listesi: [{ SerialNo, WhsCode, Qty }]
+  @Get('available-serials')
+  async getAvailableSerials(
+    @Query('itemCode') itemCode: string,
+    @Query('whsCode') whsCode: string,
+  ) {
+    if (!itemCode?.trim()) throw new BadRequestException('itemCode zorunlu');
+    if (!whsCode?.trim()) throw new BadRequestException('whsCode zorunlu');
+
+    return this.sapSerialsService.getAvailableSerialsByItemWhs(
+      itemCode,
+      whsCode,
+    );
   }
 }

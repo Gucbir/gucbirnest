@@ -6,6 +6,7 @@ import {
   Req,
   Get,
   Query,
+  UseGuards,
   Patch,
   BadRequestException,
 } from '@nestjs/common';
@@ -16,6 +17,9 @@ import { CreateProductionOrderDto } from './dto/create-production-order.dto';
 import { PauseOperationDto } from './dto/pause-operation.dto';
 import { ResumeOperationDto } from './dto/resume-operation.dto';
 import { CurrentUser } from '../decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import type { Request } from 'express';
+
 @Controller('production')
 export class ProductionController {
   constructor(private readonly productionService: ProductionService) {}
@@ -27,8 +31,14 @@ export class ProductionController {
   }
 
   // Tek satırdan üretime aktar (Akuple test için en kritik)
+
+  @UseGuards(JwtAuthGuard)
   @Post('import-from-order-line')
-  importFromOrderLine(@Body() dto: ImportFromOrderLineDto) {
+  importFromOrderLine(
+    @Req() req: Request,
+    @Body() dto: ImportFromOrderLineDto,
+  ) {
+    console.log('AUTH:', req.headers['authorization']);
     return this.productionService.importFromOrderLine(dto);
   }
 
@@ -54,6 +64,7 @@ export class ProductionController {
     return this.productionService.finishOperation(Number(operationId));
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('operations/:operationId/units/:unitId/items/:itemId/select')
   async selectItemForOperationUnitLine(
     @Param('operationId') operationId: string,
@@ -77,14 +88,13 @@ export class ProductionController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('operations-as-units')
   async getOperationsAsUnits(
     @Query('orderId') orderId?: string,
     @Query('stageCode') stageCode?: string,
   ) {
-    // orderId opsiyonel: boşsa hiç elleme
     let oid: number | undefined = undefined;
-
     const rawOrderId = String(orderId ?? '').trim();
     if (rawOrderId) {
       if (!/^\d+$/.test(rawOrderId)) {
@@ -98,7 +108,7 @@ export class ProductionController {
       : undefined;
 
     return this.productionService.getStageOperationsAsUnits({
-      orderId: oid, // undefined => hepsini getir
+      orderId: oid,
       stageCode: normalizedStageCode,
     });
   }
@@ -147,12 +157,14 @@ export class ProductionController {
   //   return this.productionService.resumeOperation(Number(id), dto);
   // }
 
+  //@UseGuards(JwtAuthGuard)
   @Post('operations/:operationId/units/:unitId/start')
   startOperationUnit(
     @Param('operationId') operationId: string,
     @Param('unitId') unitId: string,
     @CurrentUser() user: any,
   ) {
+    console.log(`dfsfsdf`);
     return this.productionService.startOperationUnit(
       Number(operationId),
       Number(unitId),
@@ -160,6 +172,7 @@ export class ProductionController {
     );
   }
 
+  //@UseGuards(JwtAuthGuard)
   @Post('operations/:opId/units/:unitId/pause')
   pauseUnit(
     @Param('opId') opId: string,
@@ -175,6 +188,7 @@ export class ProductionController {
     );
   }
 
+  // @UseGuards(JwtAuthGuard)
   @Post('operations/:opId/units/:unitId/resume')
   resumeUnit(
     @Param('opId') opId: string,
@@ -188,6 +202,7 @@ export class ProductionController {
     );
   }
 
+  // @UseGuards(JwtAuthGuard)
   @Post('operations/:opId/units/:unitId/finish')
   finishOperationUnit(
     @Param('opId') opId: string,
