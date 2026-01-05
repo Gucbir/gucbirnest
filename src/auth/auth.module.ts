@@ -33,9 +33,7 @@ import { FormsModule } from '../forms/forms.module';
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'dev-secret',
       signOptions: {
-        expiresIn: process.env.JWT_EXPIRES_IN
-          ? Number(process.env.JWT_EXPIRES_IN)
-          : 60 * 60 * 24, // 1 gün (saniye)
+        expiresIn: '365d', // ✅ 1 yıl
       },
     }),
   ],

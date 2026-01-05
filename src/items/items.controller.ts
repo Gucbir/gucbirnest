@@ -11,6 +11,11 @@ export class ItemsController {
     return this.itemsService.findAll(query);
   }
 
+  @Get('filter-options')
+  async getFilterOptions() {
+    return this.itemsService.getFilterOptions();
+  }
+
   @Get(':itemCode/warehouses-live')
   async getWarehousesLive(@Param('itemCode') itemCode) {
     const data =

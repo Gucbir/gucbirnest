@@ -37,47 +37,68 @@ model SapUser {
   defaultOfUsers User[] @relation("DefaultSapUser")
 }
 
+model ItemGroup {
+  id        Int    @id @default(autoincrement())
+
+  // SAP: ItemGroups.Number (OITB.ItmsGrpCod)
+  code      Int    @unique
+  name      String
+
+  items     Item[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+}
+
 model Item {
   id          Int     @id @default(autoincrement())
   ItemCode    String  @unique
   ItemName    String
   ForeignName String?
 
-  // SAP Flags (Aşırı kritik)
-  ItemType      String // "I" (Inventory), "L" (Labor), "A" (Service)
-  InventoryItem Boolean // tYES/tNO → Prisma'da Boolean
+  ItemType      String
+  InventoryItem Boolean
   SalesItem     Boolean
   PurchaseItem  Boolean
 
-  // Units of Measure
   InventoryUoM String?
   SalesUoM     String?
   PurchaseUoM  String?
 
-  // Ürün grubu
-  ItemsGroupCode Int?
+  // ✅ Relation (opsiyonel)
+  itemGroup   ItemGroup? @relation(fields: [itemGroupId], references: [id], onDelete: SetNull)
+  itemGroupId Int?
 
-  // Minimum & Maximum Inventory (SAP OITM: MinInventory, MaxInventory)
+  // İstersen raporlama/kolay filtre için SAP group code'u da redundantly tutabilirsin
+  // ama şart değil. Ben “şimdilik gerek yok” derim.
+  // itemsGroupCode Int?
+
   MinInventory    Float?
   MaxInventory    Float?
-  QuantityOnStock Float? // Toplam mevcut stok miktarı
+  QuantityOnStock Float?
 
-  // Durumlar
-  Valid     Boolean // tYES/tNO → Boolean
-  Frozen    Boolean // tYES/tNO → Boolean
-  AssetItem Boolean // tYES/tNO → Boolean (Sabit kıymet)
+  Valid     Boolean
+  Frozen    Boolean
+  AssetItem Boolean
 
-  // Fiyat / Kost
-  AvgPrice   Float? // OITM.AvgPrice
-  LastPurPrc Float? // OITM.LastPurPrc
-  LastPurCur String? // TRY, USD vs.
+  AvgPrice   Float?
+  LastPurPrc Float?
+  LastPurCur String?
 
-  // 🔥 İLİŞKİ: Item -> ItemWarehouseStock
+  AlternatorModel String? // U_DG_ALTERNMODEL
+  Marka           String? // U_DG_MARKA
+
   warehouseStocks ItemWarehouseStock[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([itemGroupId])
 }
+
+
 
 model Warehouse {
   id       Int                  @id @default(autoincrement())
@@ -126,6 +147,7 @@ model ProductionOrder {
   id          Int                   @id @default(autoincrement())
   sapDocEntry Int? // SAP DocEntry
   sapDocNum   Int? // SAP DocNum
+  sapLineNum  Int? // ✅ yeni: SAP Sales Order LineNum
   itemCode    String
   itemName    String
   quantity    Int                   @default(1)

@@ -24,14 +24,16 @@ export class ItemsQueryDto {
   limit = 20;
 
   // Arama
-  @IsString()
   @IsOptional()
-  search;
+  @IsString()
+  search?: string;
 
-  // Temel filtreler
   @IsString()
   @IsOptional()
-  itemType; // 'I' | 'L' | 'A'
+  engine?: string;
+
+  // Temel filtreler@IsOptional() @IsString()
+  itemType?: string;
 
   @IsBooleanString()
   @IsOptional()
@@ -60,7 +62,7 @@ export class ItemsQueryDto {
   @Type(() => Number)
   @IsInt()
   @IsOptional()
-  groupCode; // ItemsGroupCode
+  groupCode?: number;
 
   // Stoklu ürün filtreleri
   @IsBooleanString()

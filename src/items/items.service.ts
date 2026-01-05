@@ -14,81 +14,78 @@ export class ItemsService {
   ) {} // prisma hatası böyle çözülüyor
 
   async findAll(query: ItemsQueryDto) {
-    const {
-      page = 1,
-      limit = 20,
-      search,
-      itemType,
-      inventoryItem,
-      salesItem,
-      purchaseItem,
-      valid,
-      frozen,
-      assetItem,
-      groupCode,
-      hasStock,
-      orderBy = 'ItemCode',
-      orderDir = 'asc',
-    } = query as any;
+    const page = Number(query.page ?? 1);
+    const limit = Number(query.limit ?? 20);
 
-    // TIP TRUCU 1: where'i boş obje değil, tipli bir obje yapıyoruz
     const where: Prisma.ItemWhereInput = {};
 
-    // Arama (ItemCode, ItemName, ForeignName)
-    if (search && search.trim() !== '') {
-      where.OR = [
-        { ItemCode: { contains: search, mode: 'insensitive' } },
-        { ItemName: { contains: search, mode: 'insensitive' } },
-        { ForeignName: { contains: search, mode: 'insensitive' } },
-      ];
+    // --- Temel filtreler ---
+    if (query.itemType) where.ItemType = query.itemType;
+
+    if (query.inventoryItem !== undefined)
+      where.InventoryItem = query.inventoryItem === 'true';
+
+    if (query.salesItem !== undefined)
+      where.SalesItem = query.salesItem === 'true';
+
+    if (query.purchaseItem !== undefined)
+      where.PurchaseItem = query.purchaseItem === 'true';
+
+    if (query.valid !== undefined) where.Valid = query.valid === 'true';
+    if (query.frozen !== undefined) where.Frozen = query.frozen === 'true';
+    if (query.assetItem !== undefined)
+      where.AssetItem = query.assetItem === 'true';
+
+    // ✅ groupCode artık ItemGroup.code
+    if (query.groupCode !== undefined && query.groupCode !== null) {
+      where.itemGroup = { code: Number(query.groupCode) };
     }
 
-    // Temel filtreler
-    if (itemType) {
-      where.ItemType = itemType;
+    // ✅ Sadece stoklu
+    if (query.hasStock === 'true') {
+      where.QuantityOnStock = { gt: 0 };
     }
 
-    if (inventoryItem !== undefined) {
-      where.InventoryItem = inventoryItem === 'true';
+    // --- Arama OR'ları (tek seferde) ---
+    const ors: Prisma.ItemWhereInput[] = [];
+
+    const s = query.search?.trim();
+    if (s) {
+      ors.push(
+        { ItemCode: { contains: s, mode: 'insensitive' } },
+        { ItemName: { contains: s, mode: 'insensitive' } },
+        { ForeignName: { contains: s, mode: 'insensitive' } },
+        { Marka: { contains: s, mode: 'insensitive' } },
+        { AlternatorModel: { contains: s, mode: 'insensitive' } },
+      );
     }
 
-    if (salesItem !== undefined) {
-      where.SalesItem = salesItem === 'true';
+    const e = (query as any).engine?.trim(); // DTO'ya engine eklediysen (query.engine) kullan
+    if (e) {
+      ors.push(
+        { ItemName: { contains: e, mode: 'insensitive' } },
+        { Marka: { contains: e, mode: 'insensitive' } },
+      );
     }
 
-    if (purchaseItem !== undefined) {
-      where.PurchaseItem = purchaseItem === 'true';
-    }
+    if (ors.length) where.OR = ors;
 
-    if (valid !== undefined) {
-      where.Valid = valid === 'true';
-    }
+    // --- Sorting (güvenli) ---
+    const allowedOrderBy = new Set([
+      'ItemCode',
+      'ItemName',
+      'QuantityOnStock',
+      'AvgPrice',
+    ]);
+    const orderByField = allowedOrderBy.has(String(query.orderBy))
+      ? String(query.orderBy)
+      : 'ItemCode';
+    const orderDir =
+      String(query.orderDir).toLowerCase() === 'desc' ? 'desc' : 'asc';
 
-    if (frozen !== undefined) {
-      where.Frozen = frozen === 'true';
-    }
-
-    if (assetItem !== undefined) {
-      where.AssetItem = assetItem === 'true';
-    }
-
-    if (groupCode !== undefined) {
-      where.ItemsGroupCode = groupCode;
-    }
-
-    // Stoklu ürün
-    if (hasStock !== undefined) {
-      const flag = hasStock === 'true';
-      if (flag) {
-        where.QuantityOnStock = { gt: 0 };
-      } else {
-        where.QuantityOnStock = { lte: 0 };
-      }
-    }
-
-    // TIP TRUCU 2: dynamic key için any cast
-    const orderByClause: Prisma.ItemOrderByWithRelationInput = {};
-    (orderByClause as any)[orderBy] = orderDir || 'asc';
+    const orderByClause: Prisma.ItemOrderByWithRelationInput = {
+      [orderByField]: orderDir,
+    } as any;
 
     const skip = (page - 1) * limit;
     const take = limit;
@@ -99,7 +96,7 @@ export class ItemsService {
         orderBy: orderByClause,
         skip,
         take,
-        // include: { warehouseStocks: true }, // depoları da istersen açarsın
+        include: { itemGroup: true }, // istersen
       }),
       this.prisma.item.count({ where }),
     ]);
@@ -110,7 +107,7 @@ export class ItemsService {
         page,
         limit,
         total,
-        pageCount: Math.ceil(total / limit),
+        pageCount: Math.max(1, Math.ceil(total / limit)),
       },
     };
   }
@@ -211,5 +208,56 @@ export class ItemsService {
     }
 
     return map;
+  }
+
+  // src/items/items.service.ts
+  async getFilterOptions() {
+    const MOTOR_GROUP = 113;
+    const ALT_GROUP = 114;
+
+    const [motorBrands, alternatorModels] = await this.prisma.$transaction([
+      // Motor markaları (Marka alanı)
+      this.prisma.item.findMany({
+        where: {
+          itemGroup: { code: MOTOR_GROUP },
+          Marka: { not: null },
+        },
+        distinct: ['Marka'],
+        select: { Marka: true },
+        orderBy: { Marka: 'asc' },
+      }),
+
+      // Alternatör modelleri (AlternatorModel alanı)
+      this.prisma.item.findMany({
+        where: {
+          itemGroup: { code: ALT_GROUP },
+          AlternatorModel: { not: null },
+        },
+        distinct: ['AlternatorModel'],
+        select: { AlternatorModel: true },
+        orderBy: { AlternatorModel: 'asc' },
+      }),
+    ]);
+
+    return {
+      engineOptions: motorBrands
+        .map((x) => (x.Marka || '').trim())
+        .filter(Boolean)
+        .map((v) => ({ value: v, label: v })),
+
+      alternatorModelOptions: alternatorModels
+        .map((x) => (x.AlternatorModel || '').trim())
+        .filter(Boolean)
+        .map((v) => ({ value: v, label: v })),
+
+      // şimdilik statik bırak (DB’de alan yok)
+      hzOptions: [
+        { value: '50', label: '50 Hz' },
+        { value: '60', label: '60 Hz' },
+      ],
+      kvaStandbyOptions: [{ value: 'ALL', label: 'Tümü' }],
+      kvaPrimeOptions: [{ value: 'ALL', label: 'Tümü' }],
+      emissionOptions: [{ value: 'ALL', label: 'Tümü' }],
+    };
   }
 }

@@ -86,6 +86,7 @@ CREATE TABLE "Log" (
     "path" TEXT NOT NULL,
     "message" TEXT NOT NULL,
     "userId" INTEGER NOT NULL,
+    "status" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Log_pkey" PRIMARY KEY ("id")
@@ -285,6 +286,7 @@ CREATE TABLE "ProductionOperationUnit" (
     "status" TEXT NOT NULL DEFAULT 'waiting',
     "startedAt" TIMESTAMP(3),
     "finishedAt" TIMESTAMP(3),
+    "lastActionByUserId" INTEGER,
     "pausedAt" TIMESTAMP(3),
     "pausedTotalSec" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -297,6 +299,7 @@ CREATE TABLE "ProductionOperationUnit" (
 CREATE TABLE "ProductionOperationUnitLog" (
     "id" SERIAL NOT NULL,
     "operationUnitId" INTEGER NOT NULL,
+    "userId" INTEGER,
     "action" TEXT NOT NULL,
     "reason" TEXT,
     "note" TEXT,
@@ -320,6 +323,57 @@ CREATE TABLE "ProductionOperationUnitItemSelection" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "ProductionOperationUnitItemSelection_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ProductionAlternativeLog" (
+    "id" SERIAL NOT NULL,
+    "operationId" INTEGER NOT NULL,
+    "unitId" INTEGER NOT NULL,
+    "itemId" INTEGER NOT NULL,
+    "bomItemCode" TEXT NOT NULL,
+    "bomItemName" TEXT NOT NULL,
+    "bomWhsCode" TEXT,
+    "bomQty" DOUBLE PRECISION,
+    "selectedItemCode" TEXT,
+    "selectedItemName" TEXT,
+    "selectedWhsCode" TEXT,
+    "selectedQty" DOUBLE PRECISION,
+    "isAlternative" BOOLEAN NOT NULL DEFAULT false,
+    "userId" INTEGER,
+    "action" TEXT NOT NULL,
+    "sapIssueDocEntry" INTEGER,
+    "note" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ProductionAlternativeLog_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AkupleItemTemplate" (
+    "id" SERIAL NOT NULL,
+    "parentItemCode" TEXT NOT NULL,
+    "parentItemName" TEXT,
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "AkupleItemTemplate_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AkupleItemTemplateLine" (
+    "id" SERIAL NOT NULL,
+    "templateId" INTEGER NOT NULL,
+    "itemCode" TEXT NOT NULL,
+    "itemName" TEXT NOT NULL,
+    "quantity" DOUBLE PRECISION NOT NULL,
+    "uomName" TEXT,
+    "warehouseCode" TEXT,
+    "issueMethod" TEXT,
+    "lineNo" INTEGER,
+
+    CONSTRAINT "AkupleItemTemplateLine_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -409,6 +463,24 @@ CREATE INDEX "ProductionOperationUnitItemSelection_itemId_idx" ON "ProductionOpe
 -- CreateIndex
 CREATE UNIQUE INDEX "ProductionOperationUnitItemSelection_operationId_unitId_ite_key" ON "ProductionOperationUnitItemSelection"("operationId", "unitId", "itemId");
 
+-- CreateIndex
+CREATE INDEX "ProductionAlternativeLog_operationId_idx" ON "ProductionAlternativeLog"("operationId");
+
+-- CreateIndex
+CREATE INDEX "ProductionAlternativeLog_unitId_idx" ON "ProductionAlternativeLog"("unitId");
+
+-- CreateIndex
+CREATE INDEX "ProductionAlternativeLog_itemId_idx" ON "ProductionAlternativeLog"("itemId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "AkupleItemTemplate_parentItemCode_key" ON "AkupleItemTemplate"("parentItemCode");
+
+-- CreateIndex
+CREATE INDEX "AkupleItemTemplateLine_templateId_idx" ON "AkupleItemTemplateLine"("templateId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "AkupleItemTemplateLine_templateId_itemCode_lineNo_key" ON "AkupleItemTemplateLine"("templateId", "itemCode", "lineNo");
+
 -- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_sapUserId_fkey" FOREIGN KEY ("sapUserId") REFERENCES "SapUser"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
@@ -443,6 +515,9 @@ ALTER TABLE "ProductionOperationUnit" ADD CONSTRAINT "ProductionOperationUnit_op
 ALTER TABLE "ProductionOperationUnit" ADD CONSTRAINT "ProductionOperationUnit_unitId_fkey" FOREIGN KEY ("unitId") REFERENCES "ProductionOrderUnit"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "ProductionOperationUnit" ADD CONSTRAINT "ProductionOperationUnit_lastActionByUserId_fkey" FOREIGN KEY ("lastActionByUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "ProductionOperationUnitLog" ADD CONSTRAINT "ProductionOperationUnitLog_operationUnitId_fkey" FOREIGN KEY ("operationUnitId") REFERENCES "ProductionOperationUnit"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -453,3 +528,15 @@ ALTER TABLE "ProductionOperationUnitItemSelection" ADD CONSTRAINT "ProductionOpe
 
 -- AddForeignKey
 ALTER TABLE "ProductionOperationUnitItemSelection" ADD CONSTRAINT "ProductionOperationUnitItemSelection_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "ProductionOperationItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProductionAlternativeLog" ADD CONSTRAINT "ProductionAlternativeLog_operationId_fkey" FOREIGN KEY ("operationId") REFERENCES "ProductionOperation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProductionAlternativeLog" ADD CONSTRAINT "ProductionAlternativeLog_unitId_fkey" FOREIGN KEY ("unitId") REFERENCES "ProductionOrderUnit"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProductionAlternativeLog" ADD CONSTRAINT "ProductionAlternativeLog_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "ProductionOperationItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AkupleItemTemplateLine" ADD CONSTRAINT "AkupleItemTemplateLine_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "AkupleItemTemplate"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -2,6 +2,8 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SapService } from '../sap/sap.service';
+import { UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('stocks')
 export class StocksController {
@@ -52,7 +54,7 @@ export class StocksController {
         ItemCode: true,
         ItemName: true,
         ForeignName: true,
-        ItemsGroupCode: true,
+        itemGroupId: true,
         ItemType: true,
         InventoryItem: true,
         SalesItem: true,
@@ -78,7 +80,7 @@ export class StocksController {
         itemId: base?.id ?? null,
         ItemName: base?.ItemName ?? null,
         ForeignName: base?.ForeignName ?? null,
-        ItemsGroupCode: base?.ItemsGroupCode ?? null,
+        ItemsGroupCode: base?.itemGroupId ?? null,
         ItemType: base?.ItemType ?? null,
         InventoryItem: base?.InventoryItem ?? null,
         SalesItem: base?.SalesItem ?? null,
