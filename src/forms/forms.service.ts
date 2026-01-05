@@ -47,12 +47,12 @@ export class FormsService {
   }
 
   async getForms() {
-    //  TEST aşamasındaki tamamlanan unit'ler
+    //  FONK_KALITE aşamasındaki waiting olanlar
     const units = await this.prisma.productionOperationUnit.findMany({
       where: {
-        status: 'done',
+        status: 'waiting',
         operation: {
-          stageCode: 'TEST',
+          stageCode: 'FONK_KALITE',
         },
       },
       include: {
@@ -96,6 +96,8 @@ export class FormsService {
 
     //  unit + form
     return units.map((u) => ({
+      unitId: u.unitId,
+      operationId: u.operationId,
       orderNo: u.unit.order.sapDocEntry,
       serialNo: u.unit.serialNo,
       forms: formMap[u.unit.serialNo] ?? {
