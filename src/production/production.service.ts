@@ -714,7 +714,6 @@ export class ProductionService {
 
       if (!row) throw new NotFoundException('operationUnit not found');
       if (row.status === 'done') return row;
-
       const updated = await tx.productionOperationUnit.update({
         where: { operationId_unitId: { operationId, unitId } },
         data: {
@@ -807,8 +806,18 @@ export class ProductionService {
         return updated;
       }
 
-      // ✅ TEST -> FINAL (sende FINAL stageCode neyse onu kullan)
+      // ✅ TEST -> FONK_KALITE
       if (stageCode === 'TEST') {
+        const finalOpId = await this.getOperationIdByStageCode(
+          tx,
+          orderId,
+          'FONK_KALITE',
+        );
+        if (finalOpId) await this.openUnitForStage(tx, finalOpId, unitId);
+        return updated;
+      }
+      // ✅ FONK_KALITE -> FINAL (sende FINAL stageCode neyse onu kullan)
+      if (stageCode === 'FONK_KALITE') {
         const finalOpId = await this.getOperationIdByStageCode(
           tx,
           orderId,
@@ -817,7 +826,6 @@ export class ProductionService {
         if (finalOpId) await this.openUnitForStage(tx, finalOpId, unitId);
         return updated;
       }
-
       return updated;
     });
   }
